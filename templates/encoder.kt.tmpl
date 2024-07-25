@@ -1,0 +1,84 @@
+package {{ package . }}
+
+{{ range packageImports . -}}
+import {{ . }}.writeTo
+{{ end -}}
+import com.latenighthack.ktbuf.ProtobufWriter
+import com.latenighthack.ktbuf.ProtobufOutputStream
+import kotlin.js.JsName
+
+{{ define "message" -}}
+@JsName("{{ escapedFullyQualifiedName . }}ToByteArray")
+@Suppress("NOTHING_TO_INLINE")
+inline fun {{ fullyQualifiedName . }}.toByteArray() = ProtobufOutputStream()
+    .apply {
+        write {
+            this@toByteArray.writeTo(it)
+        }
+    }
+    .toByteArray()
+
+@JsName("{{ escapedFullyQualifiedName . }}WriteTo")
+fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
+    {{- range .OneOfs }}
+    when ({{ lowerCamel .Descriptor.Name }}) {
+        {{- range .Fields }}
+            {{- if .Type.IsEmbed }}
+        is {{ name .Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }} -> writer.encode({{ .Descriptor.Number }}) { {{ lowerCamel .OneOf.Descriptor.Name }}.value.writeTo(this) }
+            {{- else if .Type.IsEnum }}
+        is {{ name .Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }} -> writer.{{ writerMethod .Type.ProtoType }}({{ lowerCamel .OneOf.Descriptor.Name }}.value.value, {{ .Descriptor.Number }})
+            {{- else }}
+        is {{ name .Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }} -> writer.{{ writerMethod .Type.ProtoType }}({{ lowerCamel .OneOf.Descriptor.Name }}.value, {{ .Descriptor.Number }})
+            {{- end }}
+        {{- end }}
+        else -> {}
+    }
+    {{ end -}}
+    {{ range $index, $_ := .NonOneOfFields -}}
+        {{- if .Type.IsEmbed }}
+    {{ name . }}?.let { value ->
+        writer.encode({{ .Descriptor.Number }}) {
+            value.writeTo(this)
+        }
+    }
+        {{- else if .Type.IsMap }}
+        {{- else if .Type.IsRepeated }}
+            {{- if .Type.Element.IsEmbed }}
+    {{ name . }}.forEach { value ->
+        writer.encode({{ .Descriptor.Number }}) {
+            value.writeTo(this)
+        }
+    }
+            {{- else if not (isPacked .Type.Element.ProtoType) }}
+    if ({{ name .}}.isNotEmpty()) {
+        {{ name . }}.forEach { value ->
+            writer.{{ writerMethod .Type.Element.ProtoType }}(value, {{ .Descriptor.Number }})
+        }
+    }
+            {{- else }}
+    if ({{ name . }}.isNotEmpty()) {
+        writer.encode({{ .Descriptor.Number }}) {
+            {{ name . }}.forEach { value ->
+                {{- if .Type.Element.IsEnum }}
+                this.{{ writerMethod .Type.Element.ProtoType }}(value.value, null)
+                {{- else }}
+                this.{{ writerMethod .Type.Element.ProtoType }}(value, null)
+                {{ end }}
+            }
+        }
+    }
+            {{- end }}
+        {{- else if .Type.IsEnum }}
+    if ({{ name . }} != {{ default . }}) writer.{{ writerMethod .Type.ProtoType }}({{ name .}}.value, {{ .Descriptor.Number }})
+        {{- else if isBytes . }}
+    if ({{ name . }}.isNotEmpty()) writer.{{ writerMethod .Type.ProtoType }}({{ name . }}, {{ .Descriptor.Number }})
+        {{- else }}
+    if ({{ name . }} != {{ default . }}) writer.{{ writerMethod .Type.ProtoType }}({{ name . }}, {{ .Descriptor.Number }})
+        {{- end }}
+    {{ end }}
+    unknownFields?.let { writer.encodeRaw(it) }
+}
+{{ end -}}
+{{ range .AllMessages -}}
+{{ template "message" . }}
+{{ end -}}

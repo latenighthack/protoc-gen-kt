@@ -1,0 +1,124 @@
+package {{ package . }}
+
+{{ range packageImports . -}}
+import {{ . }}.copy
+{{ end -}}
+
+{{- define "message" }}
+inline fun {{ fullyQualifiedCompanionName . }}(builder: {{ builderName . }}.() -> Unit): {{ name . }} {
+    return {{ builderName . }}().apply(builder).build()
+}
+inline fun {{ fullyQualifiedName . }}.copy(builder: {{ builderName . }}.() -> Unit): {{ name . }} {
+    return {{ builderName . }}(this).apply(builder).build()
+}
+class {{ simpleBuilderName . }} {
+    constructor()
+    constructor(copy: {{ fullyQualifiedName . }}) {
+        {{ range $index, $_ := .NonOneOfFields -}}
+        builderCopy.{{ name . }} = copy.{{ name . }}
+        {{ end -}}
+        {{ range $index, $_ := .OneOfs -}}
+        builderCopy.{{ name . }} = copy.{{ name . }}
+        {{ end -}}
+        builderCopy.unknownFields = copy.unknownFields
+    }
+    private data class BuilderCopy(
+        {{ range $index, $_ := .NonOneOfFields -}}
+        var {{ name . }}: {{ type . }} = {{ default . }},
+        {{ end -}}
+        {{ range $index, $_ := .OneOfs -}}
+        var {{ lowerCamel .Descriptor.Name }}: {{ name .Message }}.OneOf{{ upperCamel .Descriptor.Name }}? = null,
+        {{ end -}}
+        var unknownFields: ByteArray? = null
+    )
+
+    private val builderCopy = BuilderCopy()
+    fun build(): {{ name . }} = {{ fullyQualifiedName . }}(
+        {{ range $index, $_ := .OneOfs }}builderCopy.{{ name . }},
+        {{ end -}}
+        {{ range $index, $_ := .NonOneOfFields }}builderCopy.{{ name . }},
+        {{ end -}}
+        builderCopy.unknownFields
+    )
+
+    var unknownFields: ByteArray?
+        set(value) {
+            builderCopy.unknownFields = value
+        }
+        get() = builderCopy.unknownFields
+
+    {{- range .OneOfs }}
+
+    val {{ name . }} = OneOf{{ .Name.UpperCamelCase }}Builder()
+    inner class OneOf{{ .Name.UpperCamelCase }}Builder {
+        {{- range .Fields }}
+
+        var {{ name . }}: {{ typeNonNull . }}?
+            set(value) {
+                builderCopy.{{ lowerCamel .OneOf.Descriptor.Name }} = value?.let { {{ name .OneOf.Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }}(it) }
+            }
+            get() = (builderCopy.{{ lowerCamel .OneOf.Descriptor.Name }} as? {{ name .OneOf.Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }})?.value
+            {{-  if .Type.IsEmbed }}
+
+        fun {{ name . }}(builder: {{ .Type.Embed | builderName }}.() -> Unit) {
+            builderCopy.{{ lowerCamel .OneOf.Descriptor.Name }} = ((builderCopy.{{ lowerCamel .OneOf.Descriptor.Name }} as? {{ name .OneOf.Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }})?.value ?: ({{ .Type.Embed | builderName }}().build())).copy(builder).let { {{ name .OneOf.Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }}(it) }
+        }
+            {{- end }}
+        {{- end }}
+
+        fun fromOneOf{{ .Name.UpperCamelCase }}(other: {{ name .Message}}.OneOf{{ .Name.UpperCamelCase }}?) {
+            builderCopy.{{ name . }} = other
+        }
+    }
+    {{- end }}
+
+    {{- range .NonOneOfFields }}
+
+    var {{ name . }}: {{ type . }}
+        set(value) {
+            builderCopy.{{ name . }} = value
+        }
+        get() = builderCopy.{{ name . }}
+
+        {{- if .Type.IsEmbed }}
+
+    fun {{ name . }}(builder: {{ builderName .Type.Embed }}.() -> Unit) {
+        builderCopy.{{ name . }} = (builderCopy.{{ name . }} ?: {{ builderName .Type.Embed }}().build()).copy(builder)
+    }
+        {{- else if .Type.IsMap }}
+    inner class {{ name . }}MapBuilder {
+            {{- if .Type.Element.IsEmbed }}
+        infix fun {{ elTypeName .Type.Key }}.to(value: {{ name .Type.Element.Embed }}) {
+            builderCopy.{{ name . }} = builderCopy.{{ name . }} + Pair(this, value)
+        }
+            {{- end }}
+        fun {{ .Type.Element.Embed.Name.LowerCamelCase.String }}(key: {{ elTypeName .Type.Key }}, builder: {{ builderName .Type.Element.Embed }}.() -> Unit) {
+            key to {{ builderName .Type.Element.Embed }}().apply(builder).build()
+        }
+    }
+
+    inline fun {{ name . }}(builder: {{ name . }}MapBuilder.() -> Unit) {
+        {{ name . }}MapBuilder().apply(builder)
+    }
+
+        {{- else if .Type.IsRepeated }}
+
+    inner class {{ name . }}ListBuilder {
+            {{- if .Type.Element.IsEmbed }}
+        fun add(value: {{ fullyQualifiedName .Type.Element.Embed }}) {
+            builderCopy.{{ name . }} = builderCopy.{{ name . }} + value
+        }
+        fun add{{ simpleName .Type.Element.Embed }}(builder: {{ builderName .Type.Element.Embed }}.() -> Unit) {
+            add({{ builderName .Type.Element.Embed }}().apply(builder).build())
+        }
+            {{- end }}
+    }
+
+    fun {{ name . }}(builder: {{ name . }}ListBuilder.() -> Unit) {
+        {{ name . }}ListBuilder().apply(builder)
+    }
+        {{- end }}
+    {{ end }}
+}
+{{ end }}
+{{ range .AllMessages }}{{ template "message" . }}{{ end -}}

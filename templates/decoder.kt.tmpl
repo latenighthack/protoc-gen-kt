@@ -1,0 +1,79 @@
+package {{ package . }}
+
+{{ range packageImports . -}}
+import {{ . }}.readFrom
+{{ end -}}
+import com.latenighthack.ktbuf.ProtobufReader
+import com.latenighthack.ktbuf.ProtobufInputStream
+
+{{- define "message" -}}
+@Suppress("NOTHING_TO_INLINE")
+inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray): {{ fullyQualifiedName . }} = ProtobufInputStream()
+    .let { stream ->
+        stream.addBytes(bytes)
+        stream.read {
+            {{ fullyQualifiedName . }}.readFrom(it)
+        }
+    }
+
+fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = {{ builderName . }}().apply {
+    while (reader.nextField()) {
+        when (reader.currentFieldNumber) {
+        {{- range .OneOfs }}
+            {{- range .Fields }}
+                {{- if .Type.IsEmbed }}
+            {{ .Descriptor.Number }} -> {
+                {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readField { fieldReader ->
+                    {{ fullyQualifiedName .Type.Embed }}.readFrom(fieldReader)
+                }
+            }
+                {{- else if .Type.IsEnum }}
+            {{ .Descriptor.Number }} -> {
+                {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
+            }
+                {{- else if isBytes . }}
+            {{ .Descriptor.Number }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readBytes() }
+                {{- else }}
+            {{ .Descriptor.Number }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
+                {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- range .NonOneOfFields }}
+            {{ if .Type.IsEmbed -}}{{ .Descriptor.Number }} -> {
+                {{ name . }} = reader.readField { fieldReader ->
+                    {{ typeNonNull . }}.readFrom(fieldReader)
+                }
+            }
+            {{- else if .Type.IsMap }}
+            {{- else if .Type.IsRepeated }}{{ .Descriptor.Number }} -> {
+                {{ if .Type.Element.IsEmbed }}{{ name . }} = {{ name . }} + reader.readField { fieldReader ->
+                    {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(fieldReader)
+                }
+                {{- else if not (isPacked .Type.Element.ProtoType) }}{{ name . }} = {{ name . }} + reader.{{ readerMethod .Type.Element.ProtoType }}()
+                {{- else }}
+				reader.readField { fieldReader ->
+                    while (fieldReader.isByteAvailable()) {
+                        {{ if .Type.Element.IsEnum }}
+                        {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32())
+                        {{ else }}
+                        {{ name . }} = {{ name . }} + fieldReader.{{ readerMethod .Type.ProtoType }}()
+                        {{ end }}
+                    }
+                }
+				{{ end }}
+            }
+            {{- else if .Type.IsEnum }}{{ .Descriptor.Number }} -> {
+                {{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
+            }
+            {{- else if isBytes . }}{{ .Descriptor.Number }} -> { {{ name . }} = reader.readBytes() }
+            {{- else }}{{ .Descriptor.Number }} -> { {{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
+            {{- end }}
+        {{- end }}
+            else -> { unknownFields = (unknownFields ?: byteArrayOf()).plus(reader.skipField()) }
+        }
+    }
+}.build()
+{{ end }}
+{{ range .AllMessages }}
+{{ template "message" . }}
+{{- end -}}

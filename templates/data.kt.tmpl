@@ -1,0 +1,189 @@
+package {{ package . }}
+
+import com.latenighthack.ktbuf.bytes.listOfBytesEquals
+import com.latenighthack.ktbuf.bytes.toBase64String
+
+{{- define "enum" }}
+{{  $enumName := simpleName . }}
+sealed class {{ $enumName }}(override val value: Int) : com.latenighthack.ktbuf.proto.Enum {
+    {{- range $index, $_ := .Values }}
+    class {{ name . }} : {{ $enumName }} {
+        @Deprecated("Use {{ $enumName }}.{{ name . }} instead.")
+        constructor() : super({{ .Descriptor.Number }})
+
+        override fun toString(): String = "{{ name . }}"
+    }
+    {{- end }}
+    class UNKNOWN_(value: Int) : {{ $enumName }}(value) {
+        override fun toString(): String = "UNKNOWN($value)"
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null) return false
+
+        other as com.latenighthack.ktbuf.proto.Enum
+        return this.value == other.value
+    }
+
+    override fun hashCode(): Int {
+        return this.value
+    }
+
+    {{ range $index, $_ := .Values -}}
+    fun is{{ upperCamelEnum . }}(): Boolean {
+        return value == {{ .Descriptor.Number }}
+    }
+
+    {{ end -}}
+
+    @Suppress("DEPRECATION")
+    companion object {
+        {{- range $index, $_ := .Values }}
+        val {{ name . }} = {{ name . }}()
+        {{- end }}
+
+        @Suppress("DUPLICATE_LABEL_IN_WHEN")
+        fun fromInt(value: Int): {{ $enumName }} {
+            return when (value) {
+    {{- range $index, $_ := .Values }}
+                {{ .Descriptor.Number }} -> {{ name . }}
+    {{- end }}
+                else -> UNKNOWN_(value)
+            }
+        }
+    }
+}
+{{- end -}}
+{{- define "message" }}
+data class {{ simpleName . }}(
+    {{- range $index, $_ := .OneOfs }}
+    val {{ lowerCamel .Descriptor.Name }}: OneOf{{ upperCamel .Descriptor.Name }}? = null,
+    {{- end }}
+    {{- range $index, $_ := .NonOneOfFields }}
+    val {{ name . }}: {{ type . }} = {{ default . }},
+    {{- end }}
+    val unknownFields: ByteArray? = null
+) {
+    {{- range .Messages }}{{ include "message" . | indent 4 }}{{ end }}
+    {{- range .Enums }}{{ include "enum" . | indent 4 }}{{ end }}
+    {{- range $index, $_ := .OneOfs }}
+    sealed class OneOf{{ upperCamel .Descriptor.Name }}(protected open val value: Any) {
+        {{- range .Fields }}
+        data class {{ name . }}(public override val value: {{ typeNonNull . }}) : OneOf{{ upperCamel .OneOf.Descriptor.Name }}(value) {
+            override fun toValue(): Map<String, Any?> {
+                return mapOf()
+            }
+        }{{ end }}
+        {{ range .Fields }}
+        fun get{{ upperCamel .Descriptor.Name }}(): {{ typeNonNull . }}? = if (this is {{ name . }}) this.value else null
+        {{ end -}}
+        abstract fun toValue(): Map<String, Any?>
+    }
+    {{ end }}
+    companion object {
+        const val NAME = "{{ .Descriptor.Name }}"
+    }
+
+    fun getProtoName() = {{ simpleName . }}.NAME
+
+    override fun toString(): String {
+        val list = mutableListOf<String>(
+        {{- range $index, $_ := .OneOfs }}
+            "{{ lowerCamel .Descriptor.Name }}=${ {{ lowerCamel .Descriptor.Name }}?.toString() ?: "(null)" }",
+        {{- end }}
+        {{- range $index, $_ := .NonOneOfFields -}}
+            {{- if isBytes . }}
+            "{{ name . }}=${ {{ name . }}.let { it.toBase64String() } }",
+            {{- else if .Type.IsEnum }}
+            "{{ name . }}=${ {{ name . }}.toString() }",
+            {{- else if .Type.IsMap }}
+            // TODO
+            {{- else if .Type.IsRepeated }}
+            "{{ name . }}=[${ {{ name . }}.joinToString(",") { it.toString() } } }]",
+            {{- else if .Type.IsEmbed }}
+            "{{ name . }}=${ {{ name . }}?.toString() ?: "(null)" }",
+            {{- else }}
+            "{{ name . }}=${ {{ name . }} }",
+            {{- end -}}
+        {{ end }}
+        )
+
+        if (unknownFields != null) {
+            list.add("unknown=" + unknownFields.toBase64String())
+        }
+
+        return "{{ .Descriptor.Name }}(" + list.joinToString(",") + ")"
+    }
+
+    fun toValue(): Map<String, Any?> {
+        return mapOf<String, Any?>(
+        {{- range $index, $_ := .OneOfs }}
+            "{{ lowerCamel .Descriptor.Name }}" to ({{ lowerCamel .Descriptor.Name }}?.toString() ?: "(null)"),
+        {{- end }}
+        {{- range $index, $_ := .NonOneOfFields -}}
+            {{- if isBytes . }}
+            "{{ name . }}" to ({{ name . }}.let { it.toBase64String() }),
+            {{- else if .Type.IsEnum }}
+            "{{ name . }}" to {{ name . }}.toString(),
+            {{- else if .Type.IsMap }}
+            // TODO
+            {{- else if .Type.IsEmbed }}
+            "{{ name . }}" to {{ name . }}?.toValue(),
+            {{- else if .Type.IsRepeated }}
+                {{- if .Type.Element.IsEmbed }}
+            "{{ name . }}" to ({{ name . }}.map { it.toValue() }),
+                {{- else }}
+            "{{ name . }}" to {{ name . }},
+                {{- end }}
+            {{- else }}
+            "{{ name . }}" to {{ name . }},
+            {{- end -}}
+        {{ end }}
+        )
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other == null || this::class != other::class) return false
+
+        other as {{ simpleName . }}
+        {{ range $index, $_ := .OneOfs -}}
+        if ({{ lowerCamel .Descriptor.Name }} != other.{{ lowerCamel .Descriptor.Name }}) return false
+        {{ end -}}
+
+        {{ range $index, $_ := .NonOneOfFields -}}
+            {{ if isBytes . }}
+        if (!{{ name . }}.contentEquals(other.{{ name . }})) return false
+            {{ else if and (.Type.IsRepeated) (isBytesPT .Type.Element.ProtoType) }}
+        if (!listOfBytesEquals({{ name . }}, other.{{ name .}})) return false
+            {{ else }}
+        if ({{ name . }} != other.{{ name . }}) return false
+            {{ end -}}
+        {{ end }}
+        if (unknownFields?.contentEquals(other.unknownFields) == false) return false
+
+        return true
+    }
+    override fun hashCode(): Int {
+        var result = 0
+        {{ range $index, $_ := .OneOfs }}
+        result = 31 * result + ({{ lowerCamel .Descriptor.Name }}?.hashCode() ?: 0)
+        {{- end }}
+        {{- range $index, $_ := .NonOneOfFields -}}
+            {{- if isBytes . }}
+        result = 31 * result + {{ name . }}.contentHashCode()
+            {{- else if .Type.IsEmbed }}
+        result = 31 * result + ({{ name . }}?.hashCode() ?: 0)
+            {{- else }}
+        result = 31 * result + ({{ name . }}.hashCode())
+            {{- end -}}
+        {{ end }}
+        result = 31 * result + (unknownFields?.contentHashCode() ?: 0)
+
+        return result
+    }
+}
+{{ end }}
+{{ range .Messages }}{{ template "message" . }}{{ end -}}
+{{ range .Enums }}{{ template "enum" .}}{{ end -}}
