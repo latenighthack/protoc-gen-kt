@@ -5,10 +5,8 @@ import {{ . }}.writeTo
 {{ end -}}
 import com.latenighthack.ktbuf.ProtobufWriter
 import com.latenighthack.ktbuf.ProtobufOutputStream
-import kotlin.js.JsName
 
 {{ define "message" -}}
-@JsName("{{ escapedFullyQualifiedName . }}ToByteArray")
 @Suppress("NOTHING_TO_INLINE")
 inline fun {{ fullyQualifiedName . }}.toByteArray() = ProtobufOutputStream()
     .apply {
@@ -18,7 +16,6 @@ inline fun {{ fullyQualifiedName . }}.toByteArray() = ProtobufOutputStream()
     }
     .toByteArray()
 
-@JsName("{{ escapedFullyQualifiedName . }}WriteTo")
 fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
     {{- range .OneOfs }}
     when ({{ lowerCamel .Descriptor.Name }}) {
