@@ -1,0 +1,58 @@
+package {{ package . }}
+
+import com.latenighthack.ktbuf.net.StreamControlEvent
+import com.latenighthack.ktbuf.net.GrpcRequestContext
+import com.latenighthack.ktbuf.net.ServerMethodDescriptor
+import com.latenighthack.ktbuf.net.ServerMethod
+import com.latenighthack.ktbuf.net.ServerDescriptor
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onStart
+{{ range packageImports . -}}
+import {{ . }}.*
+{{ end -}}
+
+{{- define "service" }}
+interface {{ name . }}Server {
+    {{ $service := . }}companion object {
+        val Descriptor = ServerDescriptor(
+            "{{ protoPackage . }}", "{{ name . }}", listOf(
+                {{ range .Methods }}
+                ServerMethodDescriptor<{{ name .Input }}, {{ name .Output }}, {{ name $service }}Server>(
+                    "{{ originalName . }}",
+                    {{ name .Input }}.Companion::readFrom,
+                    {{ name .Output }}::writeTo,
+                    {{ if .ClientStreaming }}true{{ else }}false{{ end }},
+                    {{ if .ServerStreaming }}true{{ else }}false{{ end }},
+                    ServerMethod.{{ if .ClientStreaming }}{{ if .ServerStreaming }}ClientServerStreaming{{ else }}ClientStreaming{{ end }}{{ else }}{{ if .ServerStreaming }}ServerStreaming{{ else }}Unary{{ end }}{{ end }}({{ name $service }}Server::{{ name . }})
+                ),
+                {{- end }}
+            )
+        )
+    }
+    {{ range .Methods }}
+    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(context: GrpcRequestContext, request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}): {{ if .ServerStreaming }}Flow<StreamControlEvent<{{ name .Output }}>>{{ else }}{{ name .Output }}{{- end }}
+    {{- end }}
+}
+
+class Local{{ name . }}ServiceRpc(private val server: {{ name . }}Server, private val extensions: Map<String, Any> = emptyMap()): {{ name . }}Service {
+    {{ $service = . }}
+    {{- range $index, $item := .Methods }}
+    override {{ if $item.ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name $item }}(request: {{ if $item.ClientStreaming }}Flow<{{ name $item.Input }}>{{ else }}{{ name $item.Input }}{{- end }}{{ if $item.ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if $item.ServerStreaming }}Flow<{{ name $item.Output }}>{{ else }}{{ name $item.Output }}{{- end }} = server.{{ name $item }}(
+        GrpcRequestContext(
+            "",
+            emptyMap(),
+            emptyMap(),
+            extensions,
+            {{ name $service }}Server.Descriptor,
+            {{ name $service }}Server.Descriptor.methods[{{ $index }}]
+        ), request)
+        {{- if $item.ServerStreaming }}.onStart { readyCallback() }.mapNotNull { when (it) {
+        is StreamControlEvent.Close<{{ name $item.Output }}> -> null
+        is StreamControlEvent.Message<{{ name $item.Output }}> -> it.message
+    } }{{- end }}
+    {{- end }}
+}
+
+{{- end }}
+{{ range .Services }}{{ template "service" . }}{{ end -}}

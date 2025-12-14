@@ -36,7 +36,7 @@ func run() error {
 		}
 
 		// The service template will be specifically handled
-		if strings.HasPrefix(e.Name(), "service") {
+		if strings.HasPrefix(e.Name(), "service") || strings.HasPrefix(e.Name(), "server") {
 			continue
 		}
 
@@ -66,6 +66,24 @@ func run() error {
 		kt.New(
 			string(t),
 			"."+strings.TrimSuffix("service.kt.tmpl", ".tmpl"),
+			func(f pgs.File) bool {
+				return len(f.Services()) > 0
+			},
+		),
+	)
+
+	// and for server
+
+	t, err = templates.ReadFile(path.Join("templates", "server.kt.tmpl"))
+	if err != nil {
+		return err
+	}
+
+	modules = append(
+		modules,
+		kt.New(
+			string(t),
+			"."+strings.TrimSuffix("server.kt.tmpl", ".tmpl"),
 			func(f pgs.File) bool {
 				return len(f.Services()) > 0
 			},
