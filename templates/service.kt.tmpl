@@ -22,13 +22,13 @@ interface {{ name . }}Service {
         )
     }
     {{ range .Methods }}
-    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }}
+    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit = {}{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }}
     {{- end }}
 }
 
-class {{ name . }}ServiceRpc(rpc: RpcClient): {{ name . }}Service, GrpcService(rpc, "{{ protoPackage . }}", "{{ name . }}") {
+open class {{ name . }}ServiceRpc(rpc: RpcClient, private val additionalParams: (String, Any) -> Map<String, String> = { _, _ -> emptyMap() }): {{ name . }}Service, GrpcService(rpc, "{{ protoPackage . }}", "{{ name . }}") {
     {{- range .Methods }}
-    override {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }} = client{{ if .ClientStreaming }}Stream{{ else }}Unary{{- end }}Server{{ if .ServerStreaming }}Stream{{ else }}Unary{{- end }}("{{ .Name }}", request, {{ name .Input }}::writeTo, {{ name .Output }}.Companion::readFrom)
+    override {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }} = client{{ if .ClientStreaming }}Stream{{ else }}Unary{{- end }}Server{{ if .ServerStreaming }}Stream{{ else }}Unary{{- end }}("{{ .Name }}", request, {{ name .Input }}::writeTo, {{ name .Output }}.Companion::readFrom, { req -> additionalParams("{{ name .Input }}", req) } {{ if .ServerStreaming }}, readyCallback{{- end }})
     {{- end }}
 }
 {{- end }}
