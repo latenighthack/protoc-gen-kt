@@ -54,7 +54,7 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
 				reader.readField { fieldReader ->
                     while (fieldReader.isByteAvailable()) {
                         {{ if .Type.Element.IsEnum }}
-                        {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32())
+                        {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32())
                         {{ else }}
                         {{ name . }} = {{ name . }} + fieldReader.{{ readerMethod .Type.ProtoType }}()
                         {{ end }}
