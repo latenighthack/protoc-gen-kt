@@ -105,10 +105,6 @@ func (m *Module) Execute(targets map[string]pgs.File, _ map[string]pgs.Package) 
 }
 
 func (m *Module) generate(f pgs.File) {
-	if len(f.Messages()) == 0 {
-		return
-	}
-
 	if !m.check(f) {
 		return
 	}
