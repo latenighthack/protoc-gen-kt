@@ -292,3 +292,25 @@ fun main() {
     check(built.ints["a"]==3 && built.messages[0]?.id==4)
 }`)
 }
+
+func TestDuplicateEmbeddedMessagesMergeByPresence(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"merge.proto": testHeader + `message Child { int32 id=1; string text=2; repeated int32 values=3; } message Merge { Child child=1; oneof choice { Child selected=2; int32 scalar=3; } map<string,Child> children=4; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val first=Merge(child=Child(7,"keep",listOf(1)),choice=Merge.OneOfChoice.selected(Child(8,"stay"))).toByteArray()
+    val second=Merge(child=Child(text="updated",values=listOf(2)),choice=Merge.OneOfChoice.selected(Child(id=9))).toByteArray()
+    val merged=Merge.fromByteArray(first+second)
+    check(merged.child==Child(7,"updated",listOf(1,2)))
+    check(merged.choice?.getSelected()==Child(9,"stay"))
+    // An explicitly present scalar zero clears the previous nonzero value.
+    val zero=byteArrayOf(10,2,8,0)
+    check(Merge.fromByteArray(first+zero).child?.id==0)
+    val scalar=Merge(choice=Merge.OneOfChoice.scalar(4)).toByteArray()
+    check(Merge.fromByteArray(first+scalar+second).choice?.getSelected()==Child(9))
+    val entry="220d1207080712036f6c6412020800".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+    check(Merge.fromByteArray(entry).children[""]==Child(text="old"))
+}`)
+}

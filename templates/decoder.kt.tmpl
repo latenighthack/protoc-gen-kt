@@ -2,6 +2,7 @@ package {{ package . }}
 
 {{ range packageImports . -}}
 import {{ . }}.readFrom
+import {{ . }}.mergeFrom
 {{ end -}}
 import com.latenighthack.ktbuf.ProtobufReader
 import com.latenighthack.ktbuf.ProtobufInputStream
@@ -16,7 +17,9 @@ inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray):
         }
     }
 
-fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = {{ builderName . }}().apply {
+fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = mergeFrom(reader, null)
+
+fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previous: {{ fullyQualifiedName . }}?): {{ fullyQualifiedName . }} = {{ builderName . }}(previous ?: {{ fullyQualifiedName . }}()).apply {
     while (reader.nextField()) {
         when {
         {{- range .OneOfs }}
@@ -24,7 +27,7 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
                 {{- if .Type.IsEmbed }}
             reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readField { fieldReader ->
-                    {{ fullyQualifiedName .Type.Embed }}.readFrom(fieldReader)
+                    {{ fullyQualifiedName .Type.Embed }}.mergeFrom(fieldReader, {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }})
                 }
             }
                 {{- else if .Type.IsEnum }}
@@ -41,7 +44,7 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
         {{- range .NonOneOfFields }}
             {{ if .Type.IsEmbed -}}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ name . }} = reader.readField { fieldReader ->
-                    {{ typeNonNull . }}.readFrom(fieldReader)
+                    {{ typeNonNull . }}.mergeFrom(fieldReader, {{ name . }})
                 }
             }
             {{- else if .Type.IsMap }}reader.currentFieldNumber == {{ .Descriptor.Number }} && reader.currentWireType == 2U -> {
@@ -53,7 +56,7 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
                             entryReader.currentFieldNumber == 1 && entryReader.currentWireType == {{ wireType .Type.Key.ProtoType }}U -> key = entryReader.{{ readerMethod .Type.Key.ProtoType }}()
                             entryReader.currentFieldNumber == 2 && entryReader.currentWireType == {{ wireType .Type.Element.ProtoType }}U -> {
                                 {{- if .Type.Element.IsEmbed }}
-                                value = entryReader.readField { {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(it) }
+                                value = entryReader.readField { {{ fullyQualifiedName .Type.Element.Embed }}.mergeFrom(it, value) }
                                 {{- else if .Type.Element.IsEnum }}
                                 value = {{ elTypeName .Type.Element }}.Companion.fromInt(entryReader.readInt32())
                                 {{- else }}
