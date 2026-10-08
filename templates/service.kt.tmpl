@@ -13,10 +13,10 @@ interface {{ name . }}Service {
         val Descriptor = GrpcService.ServiceDescriptor(
             "{{ protoPackage . }}", "{{ name . }}", listOf(
                 {{ range .Methods }}
-                GrpcService.MethodDescriptor<{{ name .Input }}, {{ name .Output }}>(
+                GrpcService.MethodDescriptor<{{ fullyQualifiedName .Input }}, {{ fullyQualifiedName .Output }}>(
                     "{{ originalName . }}",
-                    {{ name .Input }}.Companion::readFrom,
-                    {{ name .Output }}::writeTo,
+                    {{ fullyQualifiedName .Input }}.Companion::readFrom,
+                    {{ fullyQualifiedName .Output }}::writeTo,
                     {{ if .ClientStreaming }}true{{ else }}false{{ end }},
                     {{ if .ServerStreaming }}true{{ else }}false{{ end }}
                 ),
@@ -25,13 +25,13 @@ interface {{ name . }}Service {
         )
     }
     {{ range .Methods }}
-    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit = {}{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }}
+    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ fullyQualifiedName .Input }}>{{ else }}{{ fullyQualifiedName .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit = {}{{- end }}): {{ if .ServerStreaming }}Flow<{{ fullyQualifiedName .Output }}>{{ else }}{{ fullyQualifiedName .Output }}{{- end }}
     {{- end }}
 }
 
 open class {{ name . }}ServiceRpc(rpc: RpcClient, private val additionalParams: (String, Any) -> Map<String, String> = { _, _ -> emptyMap() }): {{ name . }}Service, GrpcService(rpc, "{{ protoPackage . }}", "{{ name . }}") {
     {{- range .Methods }}
-    override {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if .ServerStreaming }}Flow<{{ name .Output }}>{{ else }}{{ name .Output }}{{- end }} = client{{ if .ClientStreaming }}Stream{{ else }}Unary{{- end }}Server{{ if .ServerStreaming }}Stream{{ else }}Unary{{- end }}("{{ .Name }}", request, {{ name .Input }}::writeTo, {{ name .Output }}.Companion::readFrom, { req -> additionalParams("{{ name .Input }}", req) } {{ if .ServerStreaming }}, readyCallback{{- end }})
+    override {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ fullyQualifiedName .Input }}>{{ else }}{{ fullyQualifiedName .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if .ServerStreaming }}Flow<{{ fullyQualifiedName .Output }}>{{ else }}{{ fullyQualifiedName .Output }}{{- end }} = client{{ if .ClientStreaming }}Stream{{ else }}Unary{{- end }}Server{{ if .ServerStreaming }}Stream{{ else }}Unary{{- end }}("{{ .Name }}", request, {{ fullyQualifiedName .Input }}::writeTo, {{ fullyQualifiedName .Output }}.Companion::readFrom, { req -> additionalParams("{{ fullyQualifiedName .Input }}", req) } {{ if .ServerStreaming }}, readyCallback{{- end }})
     {{- end }}
 }
 {{- end }}

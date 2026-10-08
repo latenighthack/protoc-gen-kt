@@ -3,8 +3,6 @@ package kt
 import (
 	"fmt"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	pgs "github.com/lyft/protoc-gen-star"
 	"latenighthack.com/protoc-gen-kt/internal/strutil"
@@ -49,7 +47,14 @@ func PackageName(node pgs.Node) pgs.Name {
 	}
 
 	// use import_path parameter ONLY if there is no go_package option in the file.
-	return pgs.Name(e.File().Descriptor().GetOptions().GetJavaPackage())
+	name := e.File().Descriptor().GetOptions().GetJavaPackage()
+	if name == "" {
+		name = e.File().Descriptor().GetPackage()
+	}
+	if name == "" {
+		name = "ktbuf.generated"
+	}
+	return pgs.Name(name)
 }
 
 func ProtoPackageName(node pgs.Node) pgs.Name {
@@ -126,7 +131,7 @@ func FullyQualifiedCompanionName(node pgs.Node) pgs.Name {
 	switch en := node.(type) {
 	case ChildEntity: // Message or Enum types, which may be nested
 		if p, ok := en.Parent().(pgs.Message); ok {
-			return pgs.Name(Name(p) + ".Companion." + en.Name())
+			return pgs.Name(Name(p) + ".Companion." + replaceProtected(PGGUpperCamelCase(en.Name())))
 		}
 		return PGGUpperCamelCase(en.Name())
 	case pgs.Entity: // any other entity should be just upper-camel-cased
@@ -209,36 +214,39 @@ func PGGLowerCamelCase(n pgs.Name) pgs.Name {
 }
 
 var protectedNames = map[pgs.Name]pgs.Name{
-	"as":        "as_",
-	"break":     "break_",
-	"class":     "class_",
-	"continue":  "continue_",
-	"do":        "do_",
-	"else":      "else_",
-	"false":     "false_",
-	"for":       "for_",
-	"fun":       "fun_",
-	"if":        "if_",
-	"in":        "in_",
-	"interface": "interface_",
-	"is":        "is_",
-	"null":      "null_",
-	"object":    "object_",
-	"package":   "package_",
-	"range":     "range_",
-	"return":    "return_",
-	"super":     "super_",
-	"this":      "this_",
-	"throw":     "throw_",
-	"true":      "true_",
-	"try":       "try_",
-	"typealias": "typealias_",
-	"typeof":    "typeof_",
-	"val":       "val_",
-	"var":       "var_",
-	"when":      "when_",
-	"while":     "while_",
-	"Any":       "PbAny",
+	"writer":        "writer_",
+	"reader":        "reader_",
+	"unknownFields": "unknownFields_",
+	"as":            "as_",
+	"break":         "break_",
+	"class":         "class_",
+	"continue":      "continue_",
+	"do":            "do_",
+	"else":          "else_",
+	"false":         "false_",
+	"for":           "for_",
+	"fun":           "fun_",
+	"if":            "if_",
+	"in":            "in_",
+	"interface":     "interface_",
+	"is":            "is_",
+	"null":          "null_",
+	"object":        "object_",
+	"package":       "package_",
+	"range":         "range_",
+	"return":        "return_",
+	"super":         "super_",
+	"this":          "this_",
+	"throw":         "throw_",
+	"true":          "true_",
+	"try":           "try_",
+	"typealias":     "typealias_",
+	"typeof":        "typeof_",
+	"val":           "val_",
+	"var":           "var_",
+	"when":          "when_",
+	"while":         "while_",
+	"Any":           "PbAny",
 }
 
 func replaceProtected(n pgs.Name) pgs.Name {
@@ -249,10 +257,7 @@ func replaceProtected(n pgs.Name) pgs.Name {
 }
 
 func joinChild(a, b pgs.Name) pgs.Name {
-	if r, _ := utf8.DecodeRuneInString(b.String()); unicode.IsLetter(r) && unicode.IsLower(r) {
-		return pgs.Name(fmt.Sprintf("%s%s", a, PGGUpperCamelCase(b)))
-	}
-	return joinNames(a, PGGUpperCamelCase(b))
+	return joinNames(a, replaceProtected(PGGUpperCamelCase(b)))
 }
 
 func joinNames(a, b pgs.Name) pgs.Name {

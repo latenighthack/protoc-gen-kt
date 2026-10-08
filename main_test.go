@@ -219,3 +219,22 @@ fun main() {
     check(nan.hashCode()==Equal(f=Float.NaN,d=Double.NaN).hashCode())
 }`)
 }
+
+func TestLegalSchemasCompile(t *testing.T) {
+	header := `syntax="proto3"; package regression; option java_package="regression"; `
+	cases := map[string]map[string]string{
+		"names":            {"case.proto": header + `message Names { int32 writer=1; int32 reader=2; int32 unknown_fields=3; oneof when { string is=4; int32 class=5; } }`},
+		"nested":           {"case.proto": header + `message Parent { message inner { int32 id=1; } inner value=1; enum E { zero=0; one=1; } E e=2; }`},
+		"package_fallback": {"case.proto": `syntax="proto3"; package regression; message Value { int32 id=1; }`},
+		"external":         {"base.proto": `syntax="proto3"; package regression.sub; option java_package="regression.sub"; message Outer { message Inner { int32 id=1; } }`, "case.proto": header + `import "base.proto"; message Value { regression.sub.Outer.Inner value=1; repeated regression.sub.Outer.Inner values=2; } service External { rpc Call(regression.sub.Outer.Inner) returns (regression.sub.Outer.Inner); }`},
+	}
+	for name, schema := range cases {
+		t.Run(name, func(t *testing.T) {
+			files, log, err := generate(t, schema)
+			if err != nil {
+				t.Fatal(log)
+			}
+			compileKotlin(t, files)
+		})
+	}
+}

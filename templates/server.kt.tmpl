@@ -18,10 +18,10 @@ interface {{ name . }}Server {
         val Descriptor = ServerDescriptor(
             "{{ protoPackage . }}", "{{ name . }}", listOf(
                 {{ range .Methods }}
-                ServerMethodDescriptor<{{ name .Input }}, {{ name .Output }}, {{ name $service }}Server>(
+                ServerMethodDescriptor<{{ fullyQualifiedName .Input }}, {{ fullyQualifiedName .Output }}, {{ name $service }}Server>(
                     "{{ originalName . }}",
-                    {{ name .Input }}.Companion::readFrom,
-                    {{ name .Output }}::writeTo,
+                    {{ fullyQualifiedName .Input }}.Companion::readFrom,
+                    {{ fullyQualifiedName .Output }}::writeTo,
                     {{ if .ClientStreaming }}true{{ else }}false{{ end }},
                     {{ if .ServerStreaming }}true{{ else }}false{{ end }},
                     ServerMethod.{{ if .ClientStreaming }}{{ if .ServerStreaming }}ClientServerStreaming{{ else }}ClientStreaming{{ end }}{{ else }}{{ if .ServerStreaming }}ServerStreaming{{ else }}Unary{{ end }}{{ end }}({{ name $service }}Server::{{ name . }})
@@ -31,14 +31,14 @@ interface {{ name . }}Server {
         )
     }
     {{ range .Methods }}
-    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(context: GrpcRequestContext, request: {{ if .ClientStreaming }}Flow<{{ name .Input }}>{{ else }}{{ name .Input }}{{- end }}): {{ if .ServerStreaming }}Flow<StreamControlEvent<{{ name .Output }}>>{{ else }}{{ name .Output }}{{- end }}
+    {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(context: GrpcRequestContext, request: {{ if .ClientStreaming }}Flow<{{ fullyQualifiedName .Input }}>{{ else }}{{ fullyQualifiedName .Input }}{{- end }}): {{ if .ServerStreaming }}Flow<StreamControlEvent<{{ fullyQualifiedName .Output }}>>{{ else }}{{ fullyQualifiedName .Output }}{{- end }}
     {{- end }}
 }
 
 class Local{{ name . }}ServiceRpc(private val server: {{ name . }}Server, private val extensions: Map<String, Any> = emptyMap()): {{ name . }}Service {
     {{ $service = . }}
     {{- range $index, $item := .Methods }}
-    override {{ if $item.ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name $item }}(request: {{ if $item.ClientStreaming }}Flow<{{ name $item.Input }}>{{ else }}{{ name $item.Input }}{{- end }}{{ if $item.ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if $item.ServerStreaming }}Flow<{{ name $item.Output }}>{{ else }}{{ name $item.Output }}{{- end }} = server.{{ name $item }}(
+    override {{ if $item.ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name $item }}(request: {{ if $item.ClientStreaming }}Flow<{{ fullyQualifiedName $item.Input }}>{{ else }}{{ fullyQualifiedName $item.Input }}{{- end }}{{ if $item.ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if $item.ServerStreaming }}Flow<{{ fullyQualifiedName $item.Output }}>{{ else }}{{ fullyQualifiedName $item.Output }}{{- end }} = server.{{ name $item }}(
         GrpcRequestContext(
             "",
             emptyMap(),
@@ -48,8 +48,8 @@ class Local{{ name . }}ServiceRpc(private val server: {{ name . }}Server, privat
             {{ name $service }}Server.Descriptor.methods[{{ $index }}]
         ), request)
         {{- if $item.ServerStreaming }}.onStart { readyCallback() }.mapNotNull { when (it) {
-        is StreamControlEvent.Close<{{ name $item.Output }}> -> null
-        is StreamControlEvent.Message<{{ name $item.Output }}> -> it.message
+        is StreamControlEvent.Close<{{ fullyQualifiedName $item.Output }}> -> null
+        is StreamControlEvent.Message<{{ fullyQualifiedName $item.Output }}> -> it.message
     } }{{- end }}
     {{- end }}
 }

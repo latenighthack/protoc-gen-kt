@@ -52,7 +52,7 @@ func DefaultValue(field pgs.Field) string {
 	case ft.IsEmbed():
 		return "null"
 	case ft.IsEnum():
-		return Type(field).String() + "." + ft.Enum().Values()[0].Name().String()
+		return Type(field).String() + "." + Name(ft.Enum().Values()[0]).String()
 	default:
 		t := ft.ProtoType()
 		switch t {
