@@ -54,7 +54,13 @@ func PackageName(node pgs.Node) pgs.Name {
 	if name == "" {
 		name = "ktbuf.generated"
 	}
-	return pgs.Name(name)
+	parts := strings.Split(name, ".")
+	for i, part := range parts {
+		if _, reserved := protectedNames[pgs.Name(part)]; reserved {
+			parts[i] = "`" + part + "`"
+		}
+	}
+	return pgs.Name(strings.Join(parts, "."))
 }
 
 func ProtoPackageName(node pgs.Node) pgs.Name {
@@ -133,9 +139,9 @@ func FullyQualifiedCompanionName(node pgs.Node) pgs.Name {
 		if p, ok := en.Parent().(pgs.Message); ok {
 			return pgs.Name(Name(p) + ".Companion." + replaceProtected(PGGUpperCamelCase(en.Name())))
 		}
-		return PGGUpperCamelCase(en.Name())
+		return replaceProtected(PGGUpperCamelCase(en.Name()))
 	case pgs.Entity: // any other entity should be just upper-camel-cased
-		return PGGUpperCamelCase(en.Name())
+		return replaceProtected(PGGUpperCamelCase(en.Name()))
 	default:
 		panic("unreachable")
 	}
@@ -214,6 +220,8 @@ func PGGLowerCamelCase(n pgs.Name) pgs.Name {
 }
 
 var protectedNames = map[pgs.Name]pgs.Name{
+	"builderCopy":   "builderCopy_",
+	"protoName":     "protoName_",
 	"writer":        "writer_",
 	"reader":        "reader_",
 	"unknownFields": "unknownFields_",
@@ -247,6 +255,12 @@ var protectedNames = map[pgs.Name]pgs.Name{
 	"when":          "when_",
 	"while":         "while_",
 	"Any":           "PbAny",
+}
+
+func init() {
+	for _, name := range []string{"String", "ByteArray", "Int", "UInt", "Long", "ULong", "Float", "Double", "Boolean", "Char", "Unit", "Nothing", "Array", "List", "Map", "Set", "MutableList", "MutableMap", "Pair", "Enum", "Collection", "Iterable", "Sequence", "Comparable", "Throwable", "Exception", "ProtobufReader", "ProtobufWriter", "ProtobufInputStream", "ProtobufOutputStream", "ProtobufLimits", "MutableLinkedByteArray", "GrpcService", "Flow"} {
+		protectedNames[pgs.Name(name)] = pgs.Name("Pb" + name)
+	}
 }
 
 func replaceProtected(n pgs.Name) pgs.Name {

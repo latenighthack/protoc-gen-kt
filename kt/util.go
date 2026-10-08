@@ -131,7 +131,7 @@ func WriterMethod(t pgs.ProtoType) string {
 
 func OutputPath(e pgs.Entity) pgs.FilePath {
 	out := e.File().InputPath().SetExt("")
-	path := strings.Join(strings.Split(PackageName(e).String(), "."), "/")
+	path := strings.Join(strings.Split(strings.ReplaceAll(PackageName(e).String(), "`", ""), "."), "/")
 
 	// Import relative ignores the existing file structure
 	return pgs.FilePath(path).Push(out.Base())
