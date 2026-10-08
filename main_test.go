@@ -254,3 +254,21 @@ fun main() {
     check(Wire.fromByteArray(Wire(i=9,f=10U,d=11UL,s="ok",child=Child(12),r=listOf(13)).toByteArray()).i==9)
 }`)
 }
+
+func TestRepeatedScalarWireFormsAndPackedOption(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"repeat.proto": testHeader + `enum Kind { ZERO=0; ONE=1; } message Repeated { repeated int32 expanded=1 [packed=false]; repeated int32 packed=2; repeated fixed32 fixed=3 [packed=false]; repeated float floats=4 [packed=false]; repeated Kind kinds=5 [packed=false]; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import com.latenighthack.ktbuf.*
+fun main() {
+    val value=Repeated(expanded=listOf(1,2),packed=listOf(3,4),fixed=listOf(5U,6U),floats=listOf(1.5f,-0.0f),kinds=listOf(Kind.Companion.ONE))
+    check(Repeated.fromByteArray(value.toByteArray())==value)
+    check(Repeated(expanded=listOf(1,2)).toByteArray().contentEquals(byteArrayOf(8,1,8,2)))
+    check(Repeated(packed=listOf(1,2)).toByteArray().contentEquals(byteArrayOf(18,2,1,2)))
+    val mixed=byteArrayOf(10,2,1,2,8,3,16,4,18,2,5,6)
+    val decoded=Repeated.fromByteArray(mixed)
+    check(decoded.expanded==listOf(1,2,3) && decoded.packed==listOf(4,5,6))
+}`)
+}

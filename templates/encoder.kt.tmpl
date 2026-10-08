@@ -46,10 +46,10 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
             value.writeTo(this)
         }
     }
-            {{- else if not (isPacked .Type.Element.ProtoType) }}
+            {{- else if not (shouldPack .) }}
     if ({{ name .}}.isNotEmpty()) {
         {{ name . }}.forEach { value ->
-            writer.{{ writerMethod .Type.Element.ProtoType }}(value, {{ .Descriptor.Number }})
+            writer.{{ writerMethod .Type.Element.ProtoType }}(value{{ if .Type.Element.IsEnum }}.value{{ end }}, {{ .Descriptor.Number }})
         }
     }
             {{- else }}

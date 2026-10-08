@@ -188,3 +188,11 @@ func AcceptedWireTypes(f pgs.Field) string {
 	}
 	return fmt.Sprintf("reader.currentWireType == %dU", WireType(ft.ProtoType()))
 }
+
+func ShouldPack(f pgs.Field) bool {
+	if !IsPacked(f.Type().Element().ProtoType()) {
+		return false
+	}
+	options := f.Descriptor().GetOptions()
+	return options == nil || options.Packed == nil || options.GetPacked()
+}
