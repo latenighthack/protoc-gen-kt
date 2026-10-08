@@ -193,3 +193,29 @@ fun main() {
     check(Zero().toByteArray().isEmpty())
 }`)
 }
+
+func TestGeneratedEqualityAndHashContracts(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"equal.proto": testHeader + `enum First { ZERO=0; ONE=1; } enum Second { OTHER_ZERO=0; } message Equal { repeated bytes chunks=1; float f=2; double d=3; oneof choice { bytes payload=4; } }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val a = Equal(chunks=listOf(byteArrayOf(1)),choice=Equal.OneOfChoice.payload(byteArrayOf(2)))
+    val b = Equal(chunks=listOf(byteArrayOf(1)),choice=Equal.OneOfChoice.payload(byteArrayOf(2)))
+    check(a==b && b==a && a.hashCode()==b.hashCode())
+    check(setOf(a,b).size==1)
+    val c=Equal(unknownFields=byteArrayOf(8,1)); val empty=Equal()
+    check(!c.equals(empty) && !empty.equals(c))
+    check(c==Equal(unknownFields=byteArrayOf(8,1)))
+    val first: First = First.Companion.ZERO
+    check(!first.equals("ZERO"))
+    check(!first.equals(Second.Companion.OTHER_ZERO))
+    check(first.equals(First.UNKNOWN_(0)))
+    val zero=Equal(f=0.0f,d=0.0); val negative=Equal(f=-0.0f,d=-0.0)
+    check(zero!=negative)
+    val nan=Equal(f=Float.NaN,d=Double.NaN)
+    check(nan==Equal(f=Float.NaN,d=Double.NaN))
+    check(nan.hashCode()==Equal(f=Float.NaN,d=Double.NaN).hashCode())
+}`)
+}

@@ -20,9 +20,7 @@ sealed class {{ $enumName }}(override val value: Int) : com.latenighthack.ktbuf.
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other == null) return false
-
-        other as com.latenighthack.ktbuf.proto.Enum
+        if (other !is {{ $enumName }}) return false
         return this.value == other.value
     }
 
@@ -71,6 +69,10 @@ data class {{ simpleName . }}(
     sealed class OneOf{{ upperCamel .Descriptor.Name }}(protected open val value: Any) {
         {{- range .Fields }}
         data class {{ name . }}(public override val value: {{ typeNonNull . }}) : OneOf{{ upperCamel .OneOf.Descriptor.Name }}(value) {
+            {{- if isBytes . }}
+            override fun equals(other: Any?): Boolean = other is {{ name . }} && value.contentEquals(other.value)
+            override fun hashCode(): Int = value.contentHashCode()
+            {{- end }}
             override fun toValue(): Map<String, Any?> {
                 return mapOf()
             }
@@ -157,11 +159,15 @@ data class {{ simpleName . }}(
         if (!{{ name . }}.contentEquals(other.{{ name . }})) return false
             {{ else if and (.Type.IsRepeated) (isBytesPT .Type.Element.ProtoType) }}
         if (!listOfBytesEquals({{ name . }}, other.{{ name .}})) return false
+            {{ else if isFloating . }}
+        if ({{ name . }}.toBits() != other.{{ name . }}.toBits()) return false
             {{ else }}
         if ({{ name . }} != other.{{ name . }}) return false
             {{ end -}}
         {{ end }}
-        if (unknownFields?.contentEquals(other.unknownFields) == false) return false
+        if (unknownFields == null) {
+            if (other.unknownFields != null) return false
+        } else if (other.unknownFields == null || !unknownFields.contentEquals(other.unknownFields)) return false
 
         return true
     }
@@ -173,6 +179,8 @@ data class {{ simpleName . }}(
         {{- range $index, $_ := .NonOneOfFields -}}
             {{- if isBytes . }}
         result = 31 * result + {{ name . }}.contentHashCode()
+            {{- else if and (.Type.IsRepeated) (isBytesPT .Type.Element.ProtoType) }}
+        result = 31 * result + {{ name . }}.fold(1) { hash, value -> 31 * hash + value.contentHashCode() }
             {{- else if .Type.IsEmbed }}
         result = 31 * result + ({{ name . }}?.hashCode() ?: 0)
             {{- else }}
