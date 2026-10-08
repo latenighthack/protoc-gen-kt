@@ -394,3 +394,37 @@ fun main() = runBlocking {
     check(response.id==7 && name=="Request")
 }`)
 }
+
+func TestClientStreamingUnaryServiceCompilesAndCollectsFiniteRequests(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"upload.proto": testHeader + `message Item { int32 id=1; } service Upload { rpc Collect(stream Item) returns (Item); }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import com.latenighthack.ktbuf.net.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.*
+fun main() = runBlocking {
+    val rpc=object:RpcClient {
+        override suspend fun unaryCall(method:RpcMethodSpecifier,headers:Map<String,String>,request:ByteArray):RpcResponse = error("wrong transport")
+        override suspend fun serverStreamingCall(method:RpcMethodSpecifier,block:suspend RpcServerStream.()->Unit,readyCallback:()->Unit) {
+            val response=Channel<ByteArray>(1)
+            var sum=0
+            object:RpcServerStream {
+                override suspend fun receive()=response.receive()
+                override suspend fun send(bytes:ByteArray) { sum+=Item.fromByteArray(bytes).id }
+                override suspend fun closeOutbound() { response.send(Item(sum).toByteArray()); response.close() }
+                override suspend fun closeInbound() { error("discarded response") }
+            }.block()
+        }
+    }
+    check(UploadServiceRpc(rpc).collect(flowOf(Item(1),Item(2),Item(3))).id==6)
+    check(UploadServiceRpc(rpc).collect(emptyFlow()).id==0)
+    check(UploadServer.Descriptor.methods.single().handler is ServerMethod.ClientStreaming)
+    val local=LocalUploadServiceRpc(object:UploadServer {
+        override suspend fun collect(context:GrpcRequestContext,request:Flow<Item>):Item=Item(request.toList().sumOf {it.id})
+    })
+    check(local.collect(flowOf(Item(4),Item(5))).id==9)
+}`)
+}
