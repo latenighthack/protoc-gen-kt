@@ -44,13 +44,14 @@ var (
 		"isFloating": func(f pgs.Field) bool {
 			return f.Type().ProtoType() == pgs.FloatT || f.Type().ProtoType() == pgs.DoubleT
 		},
-		"isBytes":        IsBytes,
-		"isBytesPT":      IsBytesPT,
-		"isPacked":       IsPacked,
-		"imports":        Imports,
-		"builderImports": BuilderImports,
-		"packageImports": PackageImports,
-		"default":        DefaultValue,
+		"acceptedWireTypes": AcceptedWireTypes,
+		"isBytes":           IsBytes,
+		"isBytesPT":         IsBytesPT,
+		"isPacked":          IsPacked,
+		"imports":           Imports,
+		"builderImports":    BuilderImports,
+		"packageImports":    PackageImports,
+		"default":           DefaultValue,
 	}
 )
 

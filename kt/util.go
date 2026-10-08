@@ -1,6 +1,7 @@
 package kt
 
 import (
+	"fmt"
 	"strings"
 
 	"golang.org/x/text/cases"
@@ -166,4 +167,24 @@ func UpperCamelCaseEnum(e pgs.EnumValue) string {
 	}
 
 	return b.String()
+}
+
+func WireType(t pgs.ProtoType) int {
+	switch t {
+	case pgs.DoubleT, pgs.Fixed64T, pgs.SFixed64:
+		return 1
+	case pgs.StringT, pgs.BytesT, pgs.MessageT:
+		return 2
+	case pgs.FloatT, pgs.Fixed32T, pgs.SFixed32:
+		return 5
+	default:
+		return 0
+	}
+}
+func AcceptedWireTypes(f pgs.Field) string {
+	ft := f.Type()
+	if ft.IsRepeated() && !ft.IsMap() && IsPacked(ft.Element().ProtoType()) {
+		return fmt.Sprintf("(reader.currentWireType == 2U || reader.currentWireType == %dU)", WireType(ft.Element().ProtoType()))
+	}
+	return fmt.Sprintf("reader.currentWireType == %dU", WireType(ft.ProtoType()))
 }

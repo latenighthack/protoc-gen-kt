@@ -18,40 +18,40 @@ inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray):
 
 fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = {{ builderName . }}().apply {
     while (reader.nextField()) {
-        when (reader.currentFieldNumber) {
+        when {
         {{- range .OneOfs }}
             {{- range .Fields }}
                 {{- if .Type.IsEmbed }}
-            {{ .Descriptor.Number }} -> {
+            reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readField { fieldReader ->
                     {{ fullyQualifiedName .Type.Embed }}.readFrom(fieldReader)
                 }
             }
                 {{- else if .Type.IsEnum }}
-            {{ .Descriptor.Number }} -> {
+            reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
             }
                 {{- else if isBytes . }}
-            {{ .Descriptor.Number }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readBytes() }
+            reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readBytes() }
                 {{- else }}
-            {{ .Descriptor.Number }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
+            reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
                 {{- end }}
             {{- end }}
         {{- end }}
         {{- range .NonOneOfFields }}
-            {{ if .Type.IsEmbed -}}{{ .Descriptor.Number }} -> {
+            {{ if .Type.IsEmbed -}}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ name . }} = reader.readField { fieldReader ->
                     {{ typeNonNull . }}.readFrom(fieldReader)
                 }
             }
             {{- else if .Type.IsMap }}
-            {{- else if .Type.IsRepeated }}{{ .Descriptor.Number }} -> {
+            {{- else if .Type.IsRepeated }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ if .Type.Element.IsEmbed }}{{ name . }} = {{ name . }} + reader.readField { fieldReader ->
                     {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(fieldReader)
                 }
                 {{- else if not (isPacked .Type.Element.ProtoType) }}{{ name . }} = {{ name . }} + reader.{{ readerMethod .Type.Element.ProtoType }}()
                 {{- else }}
-				reader.readField { fieldReader ->
+                if (reader.currentWireType == 2U) reader.readField { fieldReader ->
                     while (fieldReader.isByteAvailable()) {
                         {{ if .Type.Element.IsEnum }}
                         {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32())
@@ -59,14 +59,20 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
                         {{ name . }} = {{ name . }} + fieldReader.{{ readerMethod .Type.ProtoType }}()
                         {{ end }}
                     }
+                } else {
+                    {{ if .Type.Element.IsEnum }}
+                    {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32())
+                    {{ else }}
+                    {{ name . }} = {{ name . }} + reader.{{ readerMethod .Type.ProtoType }}()
+                    {{ end }}
                 }
-				{{ end }}
+                {{ end }}
             }
-            {{- else if .Type.IsEnum }}{{ .Descriptor.Number }} -> {
+            {{- else if .Type.IsEnum }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
             }
-            {{- else if isBytes . }}{{ .Descriptor.Number }} -> { {{ name . }} = reader.readBytes() }
-            {{- else }}{{ .Descriptor.Number }} -> { {{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
+            {{- else if isBytes . }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ name . }} = reader.readBytes() }
+            {{- else }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
             {{- end }}
         {{- end }}
             else -> { unknownFields = (unknownFields ?: byteArrayOf()).plus(reader.skipField()) }

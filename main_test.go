@@ -238,3 +238,19 @@ func TestLegalSchemasCompile(t *testing.T) {
 		})
 	}
 }
+
+func TestKnownFieldsRejectMismatchedWireTypes(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"wire.proto": testHeader + `message Child { int32 value=1; } message Wire { int32 i=1; fixed32 f=2; fixed64 d=3; string s=4; Child child=5; oneof choice { bytes payload=6; int32 number=7; } repeated int32 r=8; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val malformed = byteArrayOf(10,1,9,16,9,24,9,32,9,40,9,48,9,58,1,9,64,9)
+    val decoded = Wire.fromByteArray(malformed)
+    check(decoded.i==0 && decoded.f==0U && decoded.d==0UL && decoded.s.isEmpty() && decoded.child==null && decoded.choice==null && decoded.r==listOf(9))
+    check(decoded.unknownFields!=null)
+    check(Wire.fromByteArray(decoded.toByteArray())==decoded)
+    check(Wire.fromByteArray(Wire(i=9,f=10U,d=11UL,s="ok",child=Child(12),r=listOf(13)).toByteArray()).i==9)
+}`)
+}
