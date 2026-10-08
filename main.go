@@ -1,8 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"fmt"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/pluginpb"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -17,7 +22,50 @@ var (
 	templates embed.FS
 )
 
+// Reject schemas whose presence semantics cannot be represented by this API.
+// Validate the whole request before rendering any files.
+func validateRequest(request *pluginpb.CodeGeneratorRequest) error {
+	targets := map[string]bool{}
+	for _, name := range request.FileToGenerate {
+		targets[name] = true
+	}
+	var optional func([]*descriptorpb.DescriptorProto) bool
+	optional = func(messages []*descriptorpb.DescriptorProto) bool {
+		for _, message := range messages {
+			for _, field := range message.Field {
+				if field.GetProto3Optional() {
+					return true
+				}
+			}
+			if optional(message.NestedType) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, file := range request.ProtoFile {
+		if !targets[file.GetName()] {
+			continue
+		}
+		if file.GetSyntax() != "proto3" || optional(file.MessageType) {
+			return fmt.Errorf("%s: unsupported presence semantics: protoc-gen-kt currently requires proto3 without optional fields", file.GetName())
+		}
+	}
+	return nil
+}
+
 func run() error {
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return err
+	}
+	request := new(pluginpb.CodeGeneratorRequest)
+	if err := proto.Unmarshal(input, request); err != nil {
+		return err
+	}
+	if err := validateRequest(request); err != nil {
+		return err
+	}
 	var modules []pgs.Module
 
 	tmpls, err := templates.ReadDir("templates")
@@ -90,7 +138,7 @@ func run() error {
 		),
 	)
 
-	pgs.Init(pgs.DebugEnv("DEBUG")).
+	pgs.Init(pgs.DebugEnv("DEBUG"), pgs.ProtocInput(bytes.NewReader(input))).
 		RegisterModule(modules...).
 		Render()
 
@@ -99,7 +147,7 @@ func run() error {
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }

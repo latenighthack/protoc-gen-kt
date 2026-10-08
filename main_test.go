@@ -139,3 +139,15 @@ func TestDeclarationsWithoutMessages(t *testing.T) {
 	}
 	compileKotlin(t, files)
 }
+
+func TestUnsupportedPresenceSemanticsAreRejected(t *testing.T) {
+	for _, schema := range []string{
+		`syntax="proto2"; package regression; message Presence { required int32 id=1; optional int32 count=2 [default=7]; }`,
+		testHeader + `message Presence { optional int32 count=1; }`,
+	} {
+		files, log, err := generate(t, map[string]string{"presence.proto": schema})
+		if err == nil || !strings.Contains(log, "unsupported presence semantics") || len(files) != 0 {
+			t.Fatalf("expected explicit rejection without output, got err=%v files=%v log=%s", err, len(files), log)
+		}
+	}
+}
