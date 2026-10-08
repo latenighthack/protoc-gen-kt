@@ -196,3 +196,33 @@ func ShouldPack(f pgs.Field) bool {
 	options := f.Descriptor().GetOptions()
 	return options == nil || options.Packed == nil || options.GetPacked()
 }
+
+func MapDefault(el pgs.FieldTypeElem) string {
+	if el.IsEmbed() {
+		return BuilderName(el.Embed()).String() + "().build()"
+	}
+	if el.IsEnum() {
+		return importableTypeName(el.Enum()).String() + ".Companion.fromInt(0)"
+	}
+	switch el.ProtoType() {
+	case pgs.DoubleT:
+		return "0.0"
+	case pgs.FloatT:
+		return "0.0f"
+	case pgs.Int64T, pgs.SFixed64, pgs.SInt64:
+		return "0L"
+	case pgs.UInt64T, pgs.Fixed64T:
+		return "0UL"
+	case pgs.Int32T, pgs.SFixed32, pgs.SInt32:
+		return "0"
+	case pgs.UInt32T, pgs.Fixed32T:
+		return "0U"
+	case pgs.BoolT:
+		return "false"
+	case pgs.StringT:
+		return "\"\""
+	case pgs.BytesT:
+		return "ByteArray(0)"
+	}
+	panic("unsupported map element")
+}

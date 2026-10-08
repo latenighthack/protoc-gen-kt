@@ -157,6 +157,8 @@ data class {{ simpleName . }}(
         {{ range $index, $_ := .NonOneOfFields -}}
             {{ if isBytes . }}
         if (!{{ name . }}.contentEquals(other.{{ name . }})) return false
+            {{ else if and (.Type.IsMap) (isBytesPT .Type.Element.ProtoType) }}
+        if ({{ name . }}.keys != other.{{ name . }}.keys || {{ name . }}.any { (key, value) -> !value.contentEquals(other.{{ name . }}.getValue(key)) }) return false
             {{ else if and (.Type.IsRepeated) (isBytesPT .Type.Element.ProtoType) }}
         if (!listOfBytesEquals({{ name . }}, other.{{ name .}})) return false
             {{ else if isFloating . }}
@@ -179,6 +181,8 @@ data class {{ simpleName . }}(
         {{- range $index, $_ := .NonOneOfFields -}}
             {{- if isBytes . }}
         result = 31 * result + {{ name . }}.contentHashCode()
+            {{- else if and (.Type.IsMap) (isBytesPT .Type.Element.ProtoType) }}
+        result = 31 * result + {{ name . }}.entries.sumOf { it.key.hashCode() xor it.value.contentHashCode() }
             {{- else if and (.Type.IsRepeated) (isBytesPT .Type.Element.ProtoType) }}
         result = 31 * result + {{ name . }}.fold(1) { hash, value -> 31 * hash + value.contentHashCode() }
             {{- else if .Type.IsEmbed }}

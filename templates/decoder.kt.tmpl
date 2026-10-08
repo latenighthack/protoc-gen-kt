@@ -44,7 +44,29 @@ fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fu
                     {{ typeNonNull . }}.readFrom(fieldReader)
                 }
             }
-            {{- else if .Type.IsMap }}
+            {{- else if .Type.IsMap }}reader.currentFieldNumber == {{ .Descriptor.Number }} && reader.currentWireType == 2U -> {
+                val entry = reader.readField { entryReader ->
+                    var key: {{ elTypeName .Type.Key }} = {{ mapDefault .Type.Key }}
+                    var value: {{ elTypeName .Type.Element }} = {{ mapDefault .Type.Element }}
+                    while (entryReader.nextField()) {
+                        when {
+                            entryReader.currentFieldNumber == 1 && entryReader.currentWireType == {{ wireType .Type.Key.ProtoType }}U -> key = entryReader.{{ readerMethod .Type.Key.ProtoType }}()
+                            entryReader.currentFieldNumber == 2 && entryReader.currentWireType == {{ wireType .Type.Element.ProtoType }}U -> {
+                                {{- if .Type.Element.IsEmbed }}
+                                value = entryReader.readField { {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(it) }
+                                {{- else if .Type.Element.IsEnum }}
+                                value = {{ elTypeName .Type.Element }}.Companion.fromInt(entryReader.readInt32())
+                                {{- else }}
+                                value = entryReader.{{ readerMethod .Type.Element.ProtoType }}()
+                                {{- end }}
+                            }
+                            else -> entryReader.skipField()
+                        }
+                    }
+                    key to value
+                }
+                {{ name . }} = {{ name . }} + entry
+            }
             {{- else if .Type.IsRepeated }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
                 {{ if .Type.Element.IsEmbed }}{{ name . }} = {{ name . }} + reader.readField { fieldReader ->
                     {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(fieldReader)

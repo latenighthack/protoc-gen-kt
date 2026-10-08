@@ -272,3 +272,23 @@ fun main() {
     check(decoded.expanded==listOf(1,2,3) && decoded.packed==listOf(4,5,6))
 }`)
 }
+
+func TestMapFieldsRoundTripDefaultsDuplicatesAndBuilders(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"maps.proto": testHeader + `enum Kind { ZERO=0; ONE=1; } message Value { int32 id=1; string text=2; } message Maps { map<string,int32> ints=1; map<int32,Value> messages=2; map<bool,Kind> enums=3; map<string,bytes> blobs=4; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val value=Maps(ints=mapOf("a" to 7),messages=mapOf(1 to Value(9,"ok")),enums=mapOf(true to Kind.Companion.ONE),blobs=mapOf("b" to byteArrayOf(1,2)))
+    val decoded=Maps.fromByteArray(value.toByteArray())
+    check(value==decoded && value.hashCode()==decoded.hashCode())
+    val defaults=Maps.fromByteArray(byteArrayOf(10,0,18,0,26,0,34,0))
+    check(defaults.ints==mapOf("" to 0) && defaults.messages==mapOf(0 to Value()) && defaults.enums==mapOf(false to Kind.Companion.ZERO))
+    check(defaults.blobs[""]!!.isEmpty())
+    val duplicate=Maps(ints=mapOf("a" to 1)).toByteArray()+Maps(ints=mapOf("a" to 2)).toByteArray()
+    check(Maps.fromByteArray(duplicate).ints["a"]==2)
+    val built=Maps { ints { "a" to 3 }; messages { "".length to Value(4) }; enums { false to Kind.Companion.ONE }; blobs { "b" to byteArrayOf(5) } }
+    check(built.ints["a"]==3 && built.messages[0]?.id==4)
+}`)
+}

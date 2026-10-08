@@ -39,6 +39,18 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
         }
     }
         {{- else if .Type.IsMap }}
+    {{ name . }}.forEach { (key, value) ->
+        writer.encode({{ .Descriptor.Number }}) {
+            {{ writerMethod .Type.Key.ProtoType }}(key, 1)
+            {{- if .Type.Element.IsEmbed }}
+            encode(2) { value.writeTo(this) }
+            {{- else if .Type.Element.IsEnum }}
+            encode(value.value, 2)
+            {{- else }}
+            {{ writerMethod .Type.Element.ProtoType }}(value, 2)
+            {{- end }}
+        }
+    }
         {{- else if .Type.IsRepeated }}
             {{- if .Type.Element.IsEmbed }}
     {{ name . }}.forEach { value ->

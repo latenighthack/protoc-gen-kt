@@ -87,14 +87,14 @@ class {{ simpleBuilderName . }} {
     }
         {{- else if .Type.IsMap }}
     inner class {{ name . }}MapBuilder {
-            {{- if .Type.Element.IsEmbed }}
-        infix fun {{ elTypeName .Type.Key }}.to(value: {{ name .Type.Element.Embed }}) {
+        infix fun {{ elTypeName .Type.Key }}.to(value: {{ elTypeName .Type.Element }}) {
             builderCopy.{{ name . }} = builderCopy.{{ name . }} + Pair(this, value)
         }
-            {{- end }}
+            {{- if .Type.Element.IsEmbed }}
         fun {{ .Type.Element.Embed.Name.LowerCamelCase.String }}(key: {{ elTypeName .Type.Key }}, builder: {{ builderName .Type.Element.Embed }}.() -> Unit) {
             key to {{ builderName .Type.Element.Embed }}().apply(builder).build()
         }
+            {{- end }}
     }
 
     inline fun {{ name . }}(builder: {{ name . }}MapBuilder.() -> Unit) {

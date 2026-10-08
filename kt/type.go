@@ -90,7 +90,7 @@ func ElType(el pgs.FieldTypeElem) TypeName {
 	case el.IsEnum():
 		return importableTypeName(el.Enum())
 	case el.IsEmbed():
-		return TypeName(Name(el.Embed()))
+		return importableTypeName(el.Embed())
 	default:
 		return scalarType(el.ProtoType())
 	}
@@ -102,7 +102,7 @@ func elType(ft pgs.FieldType) TypeName {
 	case el.IsEnum():
 		return importableTypeName(el.Enum())
 	case el.IsEmbed():
-		return TypeName(Name(el.Embed()))
+		return importableTypeName(el.Embed())
 	default:
 		return scalarType(el.ProtoType())
 	}

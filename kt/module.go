@@ -45,6 +45,8 @@ var (
 			return !f.Type().IsRepeated() && !f.Type().IsMap() && (f.Type().ProtoType() == pgs.FloatT || f.Type().ProtoType() == pgs.DoubleT)
 		},
 		"acceptedWireTypes": AcceptedWireTypes,
+		"wireType":          WireType,
+		"mapDefault":        MapDefault,
 		"isBytes":           IsBytes,
 		"isBytesPT":         IsBytesPT,
 		"shouldPack":        ShouldPack,
