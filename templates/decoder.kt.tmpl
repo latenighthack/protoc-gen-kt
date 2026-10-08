@@ -6,10 +6,15 @@ import {{ . }}.mergeFrom
 {{ end -}}
 import com.latenighthack.ktbuf.ProtobufReader
 import com.latenighthack.ktbuf.ProtobufInputStream
+import com.latenighthack.ktbuf.ProtobufLimits
+import com.latenighthack.ktbuf.bytes.MutableLinkedByteArray
 
 {{- define "message" -}}
 @Suppress("NOTHING_TO_INLINE")
-inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray): {{ fullyQualifiedName . }} = ProtobufInputStream()
+inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray): {{ fullyQualifiedName . }} = parseFrom(bytes, ProtobufLimits())
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun {{ fullyQualifiedName . }}.Companion.parseFrom(bytes: ByteArray, limits: ProtobufLimits): {{ fullyQualifiedName . }} = ProtobufInputStream(limits = limits)
     .let { stream ->
         stream.addBytes(bytes)
         stream.read {
@@ -20,6 +25,13 @@ inline fun {{ fullyQualifiedName . }}.Companion.fromByteArray(bytes: ByteArray):
 fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = mergeFrom(reader, null)
 
 fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previous: {{ fullyQualifiedName . }}?): {{ fullyQualifiedName . }} = {{ builderName . }}(previous ?: {{ fullyQualifiedName . }}()).apply {
+    reader.accountWork(0L{{ range .NonOneOfFields }}{{ if or .Type.IsMap .Type.IsRepeated }} + {{ name . }}.size.toLong(){{ end }}{{ end }} + (unknownFields?.size?.toLong() ?: 0L))
+    {{ range .NonOneOfFields }}{{ if .Type.IsMap }}val _pb{{ name . }} = {{ name . }}.toMutableMap()
+    {{ else if .Type.IsRepeated }}val _pb{{ name . }} = {{ name . }}.toMutableList()
+    {{ end }}{{ end }}
+    val _pbUnknown = MutableLinkedByteArray(32)
+    var _pbHasUnknown = unknownFields != null
+    unknownFields?.let { _pbUnknown.write(it) }
     while (reader.nextField()) {
         when {
         {{- range .OneOfs }}
@@ -68,27 +80,27 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
                     }
                     key to value
                 }
-                {{ name . }} = {{ name . }} + entry
+                _pb{{ name . }}[entry.first] = entry.second
             }
             {{- else if .Type.IsRepeated }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
-                {{ if .Type.Element.IsEmbed }}{{ name . }} = {{ name . }} + reader.readField { fieldReader ->
+                {{ if .Type.Element.IsEmbed }}_pb{{ name . }}.add(reader.readField { fieldReader ->
                     {{ fullyQualifiedName .Type.Element.Embed }}.readFrom(fieldReader)
-                }
-                {{- else if not (isPacked .Type.Element.ProtoType) }}{{ name . }} = {{ name . }} + reader.{{ readerMethod .Type.Element.ProtoType }}()
+                })
+                {{- else if not (isPacked .Type.Element.ProtoType) }}_pb{{ name . }}.add(reader.{{ readerMethod .Type.Element.ProtoType }}())
                 {{- else }}
                 if (reader.currentWireType == 2U) reader.readField { fieldReader ->
                     while (fieldReader.isByteAvailable()) {
                         {{ if .Type.Element.IsEnum }}
-                        {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32())
+                        _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32()))
                         {{ else }}
-                        {{ name . }} = {{ name . }} + fieldReader.{{ readerMethod .Type.ProtoType }}()
+                        _pb{{ name . }}.add(fieldReader.{{ readerMethod .Type.ProtoType }}())
                         {{ end }}
                     }
                 } else {
                     {{ if .Type.Element.IsEnum }}
-                    {{ name . }} = {{ name . }} + {{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32())
+                    _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32()))
                     {{ else }}
-                    {{ name . }} = {{ name . }} + reader.{{ readerMethod .Type.ProtoType }}()
+                    _pb{{ name . }}.add(reader.{{ readerMethod .Type.ProtoType }}())
                     {{ end }}
                 }
                 {{ end }}
@@ -100,9 +112,13 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
             {{- else }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
             {{- end }}
         {{- end }}
-            else -> { unknownFields = (unknownFields ?: byteArrayOf()).plus(reader.skipField()) }
+            else -> { _pbUnknown.write(reader.skipField()); _pbHasUnknown = true }
         }
     }
+    {{ range .NonOneOfFields }}{{ if .Type.IsMap }}{{ name . }} = _pb{{ name . }}.toMap()
+    {{ else if .Type.IsRepeated }}{{ name . }} = _pb{{ name . }}.toList()
+    {{ end }}{{ end }}
+    unknownFields = if (_pbHasUnknown) _pbUnknown.toByteArray() else null
 }.build()
 {{ end }}
 {{ range .AllMessages }}

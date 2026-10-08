@@ -314,3 +314,37 @@ fun main() {
     check(Merge.fromByteArray(entry).children[""]==Child(text="old"))
 }`)
 }
+
+func TestGeneratedParsingAllocationIsLinear(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"resources.proto": testHeader + `message Resources { repeated int32 values=1; Resources nested=2; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import java.lang.management.ManagementFactory
+import com.latenighthack.ktbuf.*
+fun main() {
+    val bean=ManagementFactory.getThreadMXBean() as com.sun.management.ThreadMXBean
+    check(bean.isThreadAllocatedMemorySupported)
+    bean.isThreadAllocatedMemoryEnabled=true
+    val id=Thread.currentThread().id
+    Resources.fromByteArray(Resources(values=listOf(1,2)).toByteArray())
+    val n=20000
+    val encoded=Resources(values=List(n) { 1 }).toByteArray()
+    var before=bean.getThreadAllocatedBytes(id)
+    check(Resources.fromByteArray(encoded).values.size==n)
+    check(bean.getThreadAllocatedBytes(id)-before < n*512L+2000000L)
+    val unknown=ByteArray(30000) { when(it%3) {0->0x98.toByte();1->6;else->1} }
+    before=bean.getThreadAllocatedBytes(id)
+    check(Resources.fromByteArray(unknown).unknownFields!!.size==unknown.size)
+    check(bean.getThreadAllocatedBytes(id)-before < 10000*1024L+2000000L)
+    var deep=byteArrayOf()
+    repeat(1000) { val child=deep; deep=ProtobufOutputStream.encode { encode(2) { encodeRaw(child) } } }
+    try { Resources.fromByteArray(deep); error("missing depth limit") } catch(expected:ProtobufLimitException) {}
+    try { Resources.parseFrom(encoded,ProtobufLimits(maxWork=5)); error("missing value work limit") } catch(expected:ProtobufLimitException) {}
+    val piece=Resources(nested=Resources(values=List(20) {1})).toByteArray()
+    val copies=ByteArray(piece.size*100) { piece[it%piece.size] }
+    try { Resources.parseFrom(copies,ProtobufLimits(maxWork=10000)); error("missing merge-copy work limit") } catch(expected:ProtobufLimitException) {}
+    try { Resources.parseFrom(encoded,ProtobufLimits(maxMessageBytes=10)); error("missing byte limit") } catch(expected:ProtobufLimitException) {}
+}`)
+}
