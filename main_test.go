@@ -372,3 +372,25 @@ fun main() {
     check(value.toString().contains("blobs="))
 }`)
 }
+
+func TestAdditionalParameterMetadataKeepsItsExistingTypeName(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"metadata.proto": testHeader + `message Request { int32 id=1; } service Metadata { rpc Call(Request) returns (Request); }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import com.latenighthack.ktbuf.net.*
+import kotlinx.coroutines.runBlocking
+fun main() = runBlocking {
+    var name=""
+    val rpc=object:RpcClient {
+        override suspend fun unaryCall(method:RpcMethodSpecifier,headers:Map<String,String>,request:ByteArray):RpcResponse {
+            check(method.additionalParameters["type"]=="Request")
+            return RpcResponse(Request(7).toByteArray(),emptyMap())
+        }
+        override suspend fun serverStreamingCall(method:RpcMethodSpecifier,block:suspend RpcServerStream.()->Unit,readyCallback:()->Unit) { error("unexpected") }
+    }
+    val response=MetadataServiceRpc(rpc) { type, _ -> name=type; mapOf("type" to type) }.call(Request())
+    check(response.id==7 && name=="Request")
+}`)
+}
