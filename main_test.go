@@ -75,7 +75,7 @@ func compileKotlin(t *testing.T, files map[string]string) string {
 	t.Helper()
 	config := os.Getenv("KTBUF_TEST_CLASSPATHS")
 	if config == "" {
-		t.Log("Kotlin consumer compilation needs KTBUF_TEST_CLASSPATHS")
+		t.Skip("Kotlin consumer compilation needs KTBUF_TEST_CLASSPATHS")
 		return ""
 	}
 	data, err := os.ReadFile(config)
@@ -93,7 +93,7 @@ func compileKotlin(t *testing.T, files map[string]string) string {
 	args := []string{"-cp", paths.Compiler, "org.jetbrains.kotlin.cli.jvm.K2JVMCompiler", "-no-stdlib", "-no-reflect", "-classpath", paths.Consumer, "-d", filepath.Join(dir, "classes")}
 	names := make([]string, 0, len(files))
 	for name := range files {
-		if strings.HasSuffix(name, ".kt") && !strings.HasSuffix(name, ".server.kt") {
+		if strings.HasSuffix(name, ".kt") {
 			names = append(names, name)
 		}
 	}
@@ -348,5 +348,27 @@ fun main() {
     val copies=ByteArray(piece.size*100) { piece[it%piece.size] }
     try { Resources.parseFrom(copies,ProtobufLimits(maxWork=10000)); error("missing merge-copy work limit") } catch(expected:ProtobufLimitException) {}
     try { Resources.parseFrom(encoded,ProtobufLimits(maxMessageBytes=10)); error("missing byte limit") } catch(expected:ProtobufLimitException) {}
+}`)
+}
+
+func TestValueProjectionKeepsOneofsMapsAndBytes(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"values.proto": testHeader + `message Child { int32 id=1; } enum Kind { ZERO=0; ONE=1; } message Values { bytes raw=1; repeated bytes chunks=2; map<string,bytes> blobs=3; map<int32,Child> children=4; repeated Kind kinds=5; oneof choice { bytes selected=6; Child child=7; int32 count=8; Kind kind=9; } }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val value=Values(raw=byteArrayOf(-1),chunks=listOf(byteArrayOf(-1)),blobs=mapOf("a" to byteArrayOf(-1)),children=mapOf(1 to Child(2)),kinds=listOf(Kind.Companion.ONE),choice=Values.OneOfChoice.selected(byteArrayOf(-1)))
+    val projected=value.toValue()
+    check(projected["raw"]=="_w" && projected["chunks"]==listOf("_w"))
+    check(projected["blobs"]==mapOf("a" to "_w"))
+    check((projected["children"] as Map<*,*>)["1"]==(Child(2).toValue()))
+    check(projected["kinds"]==listOf("ONE"))
+    check(projected["choice"]==mapOf("selected" to "_w"))
+    check(Values(choice=Values.OneOfChoice.child(Child(3))).toValue()["choice"]==mapOf("child" to Child(3).toValue()))
+    check(Values(choice=Values.OneOfChoice.count(0)).toValue()["choice"]==mapOf("count" to 0))
+    check(Values(choice=Values.OneOfChoice.kind(Kind.Companion.ONE)).toValue()["choice"]==mapOf("kind" to "ONE"))
+    check(Values().toValue()["choice"]==null)
+    check(value.toString().contains("blobs="))
 }`)
 }
