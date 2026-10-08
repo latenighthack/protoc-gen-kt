@@ -67,6 +67,8 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
             {{- end }}
         {{- else if .Type.IsEnum }}
     if ({{ name . }} != {{ default . }}) writer.{{ writerMethod .Type.ProtoType }}({{ name .}}.value, {{ .Descriptor.Number }})
+        {{- else if isFloating . }}
+    if ({{ name . }}.toRawBits() != 0{{ if eq (type .) "Double" }}L{{ end }}) writer.{{ writerMethod .Type.ProtoType }}({{ name . }}, {{ .Descriptor.Number }})
         {{- else if isBytes . }}
     if ({{ name . }}.isNotEmpty()) writer.{{ writerMethod .Type.ProtoType }}({{ name . }}, {{ .Descriptor.Number }})
         {{- else }}

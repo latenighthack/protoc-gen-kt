@@ -71,12 +71,12 @@ func generate(t *testing.T, files map[string]string) (map[string]string, string,
 
 // Consumers may opt into Kotlin compilation by supplying compiler/runtime
 // classpaths in a JSON file. CI supplies this from its paired ktbuf checkout.
-func compileKotlin(t *testing.T, files map[string]string) {
+func compileKotlin(t *testing.T, files map[string]string) string {
 	t.Helper()
 	config := os.Getenv("KTBUF_TEST_CLASSPATHS")
 	if config == "" {
 		t.Log("Kotlin consumer compilation needs KTBUF_TEST_CLASSPATHS")
-		return
+		return ""
 	}
 	data, err := os.ReadFile(config)
 	if err != nil {
@@ -115,6 +115,33 @@ func compileKotlin(t *testing.T, files map[string]string) {
 	if output, err := exec.Command(java, args...).CombinedOutput(); err != nil {
 		t.Fatalf("generated consumer did not compile: %s", output)
 	}
+	return filepath.Join(dir, "classes")
+}
+
+func runKotlin(t *testing.T, files map[string]string, program string) {
+	t.Helper()
+	files["Regression.kt"] = program
+	classes := compileKotlin(t, files)
+	if classes == "" {
+		return
+	}
+	data, err := os.ReadFile(os.Getenv("KTBUF_TEST_CLASSPATHS"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths struct {
+		Consumer string `json:"consumer"`
+	}
+	if err := json.Unmarshal(data, &paths); err != nil {
+		t.Fatal(err)
+	}
+	java := os.Getenv("KTBUF_TEST_JAVA")
+	if java == "" {
+		java = "java"
+	}
+	if output, err := exec.Command(java, "-cp", classes+string(os.PathListSeparator)+paths.Consumer, "RegressionKt").CombinedOutput(); err != nil {
+		t.Fatalf("generated behavior regression failed: %s", output)
+	}
 }
 
 const testHeader = `syntax="proto3"; package regression; option java_package="regression"; `
@@ -150,4 +177,19 @@ func TestUnsupportedPresenceSemanticsAreRejected(t *testing.T) {
 			t.Fatalf("expected explicit rejection without output, got err=%v files=%v log=%s", err, len(files), log)
 		}
 	}
+}
+
+func TestNegativeFloatingZeroSurvives(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"zero.proto": testHeader + `message Zero { float f=1; double d=2; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+fun main() {
+    val value = Zero(f=-0.0f,d=-0.0)
+    val decoded = Zero.fromByteArray(value.toByteArray())
+    check(decoded.f.toRawBits()==value.f.toRawBits())
+    check(decoded.d.toRawBits()==value.d.toRawBits())
+    check(Zero().toByteArray().isEmpty())
+}`)
 }
