@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"unicode"
 
 	pgs "github.com/lyft/protoc-gen-star"
 
@@ -44,6 +45,19 @@ func validateRequest(request *pluginpb.CodeGeneratorRequest) error {
 		return false
 	}
 	for _, file := range request.ProtoFile {
+		if pkg := file.GetOptions().GetJavaPackage(); pkg != "" {
+			for _, part := range strings.Split(pkg, ".") {
+				if part == "" {
+					return fmt.Errorf("%s: invalid java_package %q", file.GetName(), pkg)
+				}
+				for i, r := range part {
+					if r == '_' || r == '$' || unicode.IsLetter(r) || unicode.Is(unicode.Nl, r) || (i > 0 && (unicode.IsDigit(r) || unicode.IsMark(r))) {
+						continue
+					}
+					return fmt.Errorf("%s: invalid java_package %q", file.GetName(), pkg)
+				}
+			}
+		}
 		if !targets[file.GetName()] {
 			continue
 		}

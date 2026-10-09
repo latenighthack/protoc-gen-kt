@@ -56,7 +56,7 @@ func PackageName(node pgs.Node) pgs.Name {
 	}
 	parts := strings.Split(name, ".")
 	for i, part := range parts {
-		if _, reserved := protectedNames[pgs.Name(part)]; reserved {
+		if _, reserved := protectedNames[pgs.Name(part)]; reserved || strings.Contains(part, "$") {
 			parts[i] = "`" + part + "`"
 		}
 	}

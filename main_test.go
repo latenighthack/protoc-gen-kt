@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -449,4 +450,27 @@ fun main() = runBlocking<Unit> {
     }
     LowerServiceServiceRpc(rpc).lowerCall(Request())
 }`)
+}
+
+func TestInvalidJavaPackageIsRejectedBeforeAnyOutput(t *testing.T) {
+	for _, pkg := range []string{"../escaped", "safe;classInjected", "a.\nnew", "/absolute", "a..b", "a.`injected`"} {
+		t.Run(pkg, func(t *testing.T) {
+			schema := `syntax="proto3"; package regression; option java_package=` + strconv.Quote(pkg) + `; message Safe { int32 id=1; }`
+			files, log, err := generate(t, map[string]string{"package.proto": schema})
+			if err == nil || !strings.Contains(log, "invalid java_package") {
+				t.Fatalf("expected explicit package rejection: %v %s", err, log)
+			}
+			if len(files) != 0 {
+				t.Fatalf("invalid package emitted files: %v", files)
+			}
+		})
+	}
+}
+
+func TestUnicodeAndQuotedJavaPackageCompiles(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"package.proto": `syntax="proto3"; package regression; option java_package="café.$pkg.when"; message Safe { int32 id=1; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, "import café.`$pkg`.`when`.*\nfun main() {check(Safe.fromByteArray(Safe(7).toByteArray()).id==7)}")
 }
