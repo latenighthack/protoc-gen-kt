@@ -428,3 +428,25 @@ fun main() = runBlocking {
     check(local.collect(flowOf(Item(4),Item(5))).id==9)
 }`)
 }
+
+func TestWireServiceNamesRetainTheProtoIdentifier(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"wire.proto": testHeader + `message Request {} service lower_service { rpc lower_call(Request) returns (Request); }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import com.latenighthack.ktbuf.net.*
+import kotlinx.coroutines.runBlocking
+fun main() = runBlocking<Unit> {
+    check(LowerServiceService.Descriptor.serviceName=="lower_service")
+    check(LowerServiceServer.Descriptor.serviceName=="lower_service")
+    val rpc=object:RpcClient {
+        override suspend fun unaryCall(method:RpcMethodSpecifier,headers:Map<String,String>,request:ByteArray):RpcResponse {
+            check(method.serviceName=="lower_service" && method.methodName=="lower_call")
+            return RpcResponse(byteArrayOf(),emptyMap())
+        }
+        override suspend fun serverStreamingCall(method:RpcMethodSpecifier,block:suspend RpcServerStream.()->Unit,readyCallback:()->Unit) {error("unexpected")}
+    }
+    LowerServiceServiceRpc(rpc).lowerCall(Request())
+}`)
+}

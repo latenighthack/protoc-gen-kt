@@ -11,7 +11,7 @@ import {{ . }}.*
 interface {{ name . }}Service {
     companion object {
         val Descriptor = GrpcService.ServiceDescriptor(
-            "{{ protoPackage . }}", "{{ name . }}", listOf(
+            "{{ protoPackage . }}", "{{ originalName . }}", listOf(
                 {{ range .Methods }}
                 GrpcService.MethodDescriptor<{{ fullyQualifiedName .Input }}, {{ fullyQualifiedName .Output }}>(
                     "{{ originalName . }}",
@@ -29,7 +29,7 @@ interface {{ name . }}Service {
     {{- end }}
 }
 
-open class {{ name . }}ServiceRpc(rpc: RpcClient, private val additionalParams: (String, Any) -> Map<String, String> = { _, _ -> emptyMap() }): {{ name . }}Service, GrpcService(rpc, "{{ protoPackage . }}", "{{ name . }}") {
+open class {{ name . }}ServiceRpc(rpc: RpcClient, private val additionalParams: (String, Any) -> Map<String, String> = { _, _ -> emptyMap() }): {{ name . }}Service, GrpcService(rpc, "{{ protoPackage . }}", "{{ originalName . }}") {
     {{- range .Methods }}
     override {{ if .ServerStreaming }}{{ else }}suspend {{ end }}fun {{ name . }}(request: {{ if .ClientStreaming }}Flow<{{ fullyQualifiedName .Input }}>{{ else }}{{ fullyQualifiedName .Input }}{{- end }}{{ if .ServerStreaming }}, readyCallback: () -> Unit{{- end }}): {{ if .ServerStreaming }}Flow<{{ fullyQualifiedName .Output }}>{{ else }}{{ fullyQualifiedName .Output }}{{- end }} = client{{ if .ClientStreaming }}Stream{{ else }}Unary{{- end }}Server{{ if .ServerStreaming }}Stream{{ else }}Unary{{- end }}("{{ .Name }}", request, {{ fullyQualifiedName .Input }}::writeTo, {{ fullyQualifiedName .Output }}.Companion::readFrom, { req -> additionalParams("{{ name .Input }}", req) } {{ if .ServerStreaming }}, readyCallback{{- end }})
     {{- end }}

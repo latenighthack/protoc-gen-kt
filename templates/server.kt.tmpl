@@ -16,7 +16,7 @@ import {{ . }}.*
 interface {{ name . }}Server {
     {{ $service := . }}companion object {
         val Descriptor = ServerDescriptor(
-            "{{ protoPackage . }}", "{{ name . }}", listOf(
+            "{{ protoPackage . }}", "{{ originalName . }}", listOf(
                 {{ range .Methods }}
                 ServerMethodDescriptor<{{ fullyQualifiedName .Input }}, {{ fullyQualifiedName .Output }}, {{ name $service }}Server>(
                     "{{ originalName . }}",
