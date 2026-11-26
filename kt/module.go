@@ -59,6 +59,8 @@ var (
 		"builderImports":     BuilderImports,
 		"packageImports":     PackageImports,
 		"default":            DefaultValue,
+		"validatePrelude":    ValidatePrelude,
+		"validateBody":       ValidateBody,
 	}
 )
 
@@ -71,6 +73,19 @@ type Module struct {
 	template pgs.Template
 	ext      string
 	check    TemplateRequiredCheck
+	// prepare, when set, runs before a file is rendered; an error fails generation.
+	prepare func(pgs.File) error
+}
+
+// WithPrepare registers a pre-render hook whose error fails generation.
+func (m *Module) WithPrepare(f func(pgs.File) error) *Module {
+	m.prepare = f
+	return m
+}
+
+// NewValidate builds the optional buf.validate module.
+func NewValidate(src, ext string) *Module {
+	return New(src, ext, func(pgs.File) bool { return true }).WithPrepare(CheckValidation)
 }
 
 func New(src, ext string, check TemplateRequiredCheck) *Module {
@@ -122,6 +137,12 @@ func (m *Module) generate(f pgs.File) {
 
 	if _, ok := m.excludes[f.Descriptor().GetOptions().GetJavaPackage()]; ok {
 		return
+	}
+
+	if m.prepare != nil {
+		if err := m.prepare(f); err != nil {
+			m.Fail(err.Error())
+		}
 	}
 
 	m.AddGeneratorTemplateFile(
