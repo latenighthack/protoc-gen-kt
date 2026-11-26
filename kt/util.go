@@ -2,6 +2,7 @@ package kt
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"golang.org/x/text/cases"
@@ -226,3 +227,59 @@ func MapDefault(el pgs.FieldTypeElem) string {
 	}
 	panic("unsupported map element")
 }
+
+// MapKeyOrder names the ktbuf comparator that reproduces Go's deterministic map key ordering.
+func MapKeyOrder(t pgs.ProtoType) string {
+	switch t {
+	case pgs.BoolT:
+		return "ProtoKeyOrder.bool"
+	case pgs.StringT:
+		return "ProtoKeyOrder.utf8String"
+	case pgs.Int64T, pgs.SFixed64, pgs.SInt64:
+		return "ProtoKeyOrder.signedLong"
+	case pgs.UInt64T, pgs.Fixed64T:
+		return "ProtoKeyOrder.unsignedLong"
+	case pgs.Int32T, pgs.SFixed32, pgs.SInt32:
+		return "ProtoKeyOrder.signedInt"
+	case pgs.UInt32T, pgs.Fixed32T:
+		return "ProtoKeyOrder.unsignedInt"
+	default:
+		panic("unreachable: invalid map key type")
+	}
+}
+
+// NeedsFieldOrdering reports whether the default writeTo order (oneof groups first, then the
+// remaining fields in declaration order) differs from ascending field-number order, in which case
+// deterministic encoding needs a separate, number-ordered body.
+func NeedsFieldOrdering(m pgs.Message) bool {
+	last := int32(0)
+	for _, o := range m.OneOfs() {
+		for _, f := range o.Fields() {
+			if n := f.Descriptor().GetNumber(); n > last {
+				last = n
+			} else {
+				return true
+			}
+		}
+	}
+	for _, f := range m.NonOneOfFields() {
+		if n := f.Descriptor().GetNumber(); n > last {
+			last = n
+		} else {
+			return true
+		}
+	}
+	return false
+}
+
+// OrderedFields returns every field of the message (oneof members included) by ascending number.
+func OrderedFields(m pgs.Message) []pgs.Field {
+	fields := append([]pgs.Field{}, m.Fields()...)
+	sort.SliceStable(fields, func(i, j int) bool {
+		return fields[i].Descriptor().GetNumber() < fields[j].Descriptor().GetNumber()
+	})
+	return fields
+}
+
+// IsOneOfMember reports whether the field belongs to a real oneof.
+func IsOneOfMember(f pgs.Field) bool { return f.InOneOf() }

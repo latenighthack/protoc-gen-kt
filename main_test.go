@@ -474,3 +474,28 @@ func TestUnicodeAndQuotedJavaPackageCompiles(t *testing.T) {
 	}
 	runKotlin(t, files, "import café.`$pkg`.`when`.*\nfun main() {check(Safe.fromByteArray(Safe(7).toByteArray()).id==7)}")
 }
+
+func TestDeterministicEncodingSortsMapsAndOrdersFieldsByNumber(t *testing.T) {
+	files, log, err := generate(t, map[string]string{"det.proto": testHeader + `message Inner { map<uint32,string> m=1; } message Det { string s=5; oneof pick { int32 x=3; Inner y=9; } int32 z=1; map<string,int32> sm=7; map<sint64,string> lm=8; map<uint64,string> um=10; map<bool,string> bm=11; Inner inner=4; }`})
+	if err != nil {
+		t.Fatal(log)
+	}
+	runKotlin(t, files, `import regression.*
+import com.latenighthack.ktbuf.*
+fun hex(b: ByteArray) = b.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+fun main() {
+    val v = Det(s="s", pick=Det.OneOfPick.x(1), z=2, sm=linkedMapOf("😀" to 1, "｡" to 2, "a" to 3),
+        lm=linkedMapOf(5L to "a", -1L to "b"), um=linkedMapOf(ULong.MAX_VALUE to "a", 1UL to "b"), bm=linkedMapOf(true to "t", false to "f"),
+        inner=Inner(m=linkedMapOf(0x80000000u to "a", 1u to "b")))
+    val det = v.toDeterministicByteArray()
+    check(det.contentEquals(v.toByteArray(ProtobufEncodeOptions.Deterministic)))
+    check(Det.fromByteArray(det) == v && Det.fromByteArray(v.toByteArray()) == v)
+    // Field 1 (z) first, then oneof 3, inner 4 (with nested sorted map), s 5.
+    check(hex(det).startsWith("0802" + "1801" + "22"))
+    check(!det.contentEquals(v.toByteArray()))
+    // Same logical value with different insertion order encodes identically only when deterministic.
+    val w = v.copy(sm=linkedMapOf("a" to 3, "｡" to 2, "😀" to 1))
+    check(det.contentEquals(w.toDeterministicByteArray()))
+    check(!v.toByteArray().contentEquals(w.toByteArray()))
+}`)
+}

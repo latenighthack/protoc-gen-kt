@@ -44,17 +44,21 @@ var (
 		"isFloating": func(f pgs.Field) bool {
 			return !f.Type().IsRepeated() && !f.Type().IsMap() && (f.Type().ProtoType() == pgs.FloatT || f.Type().ProtoType() == pgs.DoubleT)
 		},
-		"acceptedWireTypes": AcceptedWireTypes,
-		"wireType":          WireType,
-		"mapDefault":        MapDefault,
-		"isBytes":           IsBytes,
-		"isBytesPT":         IsBytesPT,
-		"shouldPack":        ShouldPack,
-		"isPacked":          IsPacked,
-		"imports":           Imports,
-		"builderImports":    BuilderImports,
-		"packageImports":    PackageImports,
-		"default":           DefaultValue,
+		"acceptedWireTypes":  AcceptedWireTypes,
+		"wireType":           WireType,
+		"mapDefault":         MapDefault,
+		"isBytes":            IsBytes,
+		"isBytesPT":          IsBytesPT,
+		"shouldPack":         ShouldPack,
+		"mapKeyOrder":        MapKeyOrder,
+		"needsFieldOrdering": NeedsFieldOrdering,
+		"orderedFields":      OrderedFields,
+		"inOneOf":            IsOneOfMember,
+		"isPacked":           IsPacked,
+		"imports":            Imports,
+		"builderImports":     BuilderImports,
+		"packageImports":     PackageImports,
+		"default":            DefaultValue,
 	}
 )
 

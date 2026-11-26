@@ -5,6 +5,9 @@ import {{ . }}.writeTo
 {{ end -}}
 import com.latenighthack.ktbuf.ProtobufWriter
 import com.latenighthack.ktbuf.ProtobufOutputStream
+import com.latenighthack.ktbuf.ProtobufEncodeOptions
+import com.latenighthack.ktbuf.ProtoKeyOrder
+import com.latenighthack.ktbuf.entriesFor
 
 {{ define "message" -}}
 @Suppress("NOTHING_TO_INLINE")
@@ -16,10 +19,48 @@ inline fun {{ fullyQualifiedName . }}.toByteArray() = ProtobufOutputStream()
     }
     .toByteArray()
 
+fun {{ fullyQualifiedName . }}.toByteArray(options: ProtobufEncodeOptions): ByteArray = ProtobufOutputStream(options)
+    .apply {
+        write {
+            this@toByteArray.writeTo(it)
+        }
+    }
+    .toByteArray()
+
+fun {{ fullyQualifiedName . }}.toDeterministicByteArray(): ByteArray = toByteArray(ProtobufEncodeOptions.Deterministic)
+
 fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
+    {{- if needsFieldOrdering . }}
+    if (writer.deterministic) {
+        {{- range orderedFields . }}
+        {{- if inOneOf . }}
+        when ({{ lowerCamel .OneOf.Descriptor.Name }}) {
+            {{- template "oneofCase" . }}
+            else -> {}
+        }
+        {{- else }}
+        {{- template "plainField" . }}
+        {{- end }}
+        {{- end }}
+        unknownFields?.let { writer.encodeRaw(it) }
+        return
+    }
+    {{- end }}
     {{- range .OneOfs }}
     when ({{ lowerCamel .Descriptor.Name }}) {
         {{- range .Fields }}
+{{- template "oneofCase" . }}
+        {{- end }}
+        else -> {}
+    }
+    {{ end -}}
+    {{ range $index, $_ := .NonOneOfFields -}}
+{{- template "plainField" . }}
+    {{ end }}
+    unknownFields?.let { writer.encodeRaw(it) }
+}
+{{ end -}}
+{{ define "oneofCase" -}}
             {{- if .Type.IsEmbed }}
         is {{ name .Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }} -> writer.encode({{ .Descriptor.Number }}) { {{ lowerCamel .OneOf.Descriptor.Name }}.value.writeTo(this) }
             {{- else if .Type.IsEnum }}
@@ -27,11 +68,8 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
             {{- else }}
         is {{ name .Message }}.OneOf{{ upperCamel .OneOf.Descriptor.Name }}.{{ name . }} -> writer.{{ writerMethod .Type.ProtoType }}({{ lowerCamel .OneOf.Descriptor.Name }}.value, {{ .Descriptor.Number }})
             {{- end }}
-        {{- end }}
-        else -> {}
-    }
-    {{ end -}}
-    {{ range $index, $_ := .NonOneOfFields -}}
+{{- end -}}
+{{ define "plainField" -}}
         {{- if .Type.IsEmbed }}
     {{ name . }}?.let { value ->
         writer.encode({{ .Descriptor.Number }}) {
@@ -39,7 +77,7 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
         }
     }
         {{- else if .Type.IsMap }}
-    {{ name . }}.forEach { (key, value) ->
+    {{ name . }}.entriesFor(writer, {{ mapKeyOrder .Type.Key.ProtoType }}).forEach { (key, value) ->
         writer.encode({{ .Descriptor.Number }}) {
             {{ writerMethod .Type.Key.ProtoType }}(key, 1)
             {{- if .Type.Element.IsEmbed }}
@@ -86,10 +124,7 @@ fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
         {{- else }}
     if ({{ name . }} != {{ default . }}) writer.{{ writerMethod .Type.ProtoType }}({{ name . }}, {{ .Descriptor.Number }})
         {{- end }}
-    {{ end }}
-    unknownFields?.let { writer.encodeRaw(it) }
-}
-{{ end -}}
+{{- end -}}
 {{ range .AllMessages -}}
 {{ template "message" . }}
 {{ end -}}
