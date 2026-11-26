@@ -1,0 +1,24 @@
+package {{ package . }}
+
+import com.latenighthack.ktbuf.validate.*
+
+{{ validatePrelude . }}
+{{- define "validateMessage" }}
+
+fun {{ fullyQualifiedName . }}.validate(): List<Violation> {
+    val out = mutableListOf<Violation>()
+    validateInto(out, "")
+    return out
+}
+
+fun {{ fullyQualifiedName . }}.validateOrThrow() {
+    val violations = validate()
+    if (violations.isNotEmpty()) throw ProtoValidationException(getProtoName(), violations)
+}
+
+@Suppress("UNUSED_VARIABLE", "UNUSED_PARAMETER")
+fun {{ fullyQualifiedName . }}.validateInto(out: MutableList<Violation>, path: String) {
+{{ validateBody . }}}
+{{- range .Messages }}{{ template "validateMessage" . }}{{ end }}
+{{- end }}
+{{ range .Messages }}{{ template "validateMessage" . }}{{ end }}

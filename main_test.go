@@ -29,6 +29,13 @@ func TestMain(m *testing.M) {
 }
 func generate(t *testing.T, files map[string]string) (map[string]string, string, error) {
 	t.Helper()
+	return generateWith(t, files)
+}
+
+// generateWith runs the plugin with extra protoc arguments (for example --kt_opt=validate=true).
+// testdata/ is always an include directory so protos can import buf/validate/validate.proto.
+func generateWith(t *testing.T, files map[string]string, extra ...string) (map[string]string, string, error) {
+	t.Helper()
 	dir := t.TempDir()
 	out := filepath.Join(dir, "out")
 	if err := os.Mkdir(out, 0700); err != nil {
@@ -46,7 +53,8 @@ func generate(t *testing.T, files map[string]string) (map[string]string, string,
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	args := append([]string{"-I" + dir, "--plugin=protoc-gen-kt=" + testPlugin, "--kt_out=" + out}, names...)
+	args := append([]string{"-I" + dir, "-Itestdata", "--plugin=protoc-gen-kt=" + testPlugin, "--kt_out=" + out}, extra...)
+	args = append(args, names...)
 	command := exec.Command("protoc", args...)
 	data, err := command.CombinedOutput()
 	result := map[string]string{}

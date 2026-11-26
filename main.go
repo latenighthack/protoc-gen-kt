@@ -16,6 +16,9 @@ import (
 	pgs "github.com/lyft/protoc-gen-star"
 
 	"latenighthack.com/protoc-gen-kt/kt"
+
+	// Linking the generated package registers the buf.validate extensions so options arrive typed.
+	_ "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go/buf/validate"
 )
 
 var (
@@ -68,6 +71,36 @@ func validateRequest(request *pluginpb.CodeGeneratorRequest) error {
 	return nil
 }
 
+// parseParameters reads the comma-separated k=v plugin parameter. Unknown keys are errors
+// so that a typo cannot silently disable validation.
+func parseParameters(raw string) (validate bool, err error) {
+	for _, part := range strings.Split(raw, ",") {
+		if part == "" {
+			continue
+		}
+		key, value := part, ""
+		if i := strings.Index(part, "="); i >= 0 {
+			key, value = part[:i], part[i+1:]
+		}
+		switch key {
+		case "validate":
+			switch value {
+			case "true":
+				validate = true
+			case "false":
+				validate = false
+			default:
+				return false, fmt.Errorf("invalid value %q for parameter validate (expected true or false)", value)
+			}
+		case "output_path":
+			// consumed by protoc-gen-star itself
+		default:
+			return false, fmt.Errorf("unknown parameter %q (supported: validate=true|false)", key)
+		}
+	}
+	return validate, nil
+}
+
 func run() error {
 	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -75,6 +108,10 @@ func run() error {
 	}
 	request := new(pluginpb.CodeGeneratorRequest)
 	if err := proto.Unmarshal(input, request); err != nil {
+		return err
+	}
+	withValidate, err := parseParameters(request.GetParameter())
+	if err != nil {
 		return err
 	}
 	if err := validateRequest(request); err != nil {
@@ -98,7 +135,7 @@ func run() error {
 		}
 
 		// The service template will be specifically handled
-		if strings.HasPrefix(e.Name(), "service") || strings.HasPrefix(e.Name(), "server") {
+		if strings.HasPrefix(e.Name(), "service") || strings.HasPrefix(e.Name(), "server") || strings.HasPrefix(e.Name(), "validate") {
 			continue
 		}
 
@@ -151,6 +188,15 @@ func run() error {
 			},
 		),
 	)
+
+	// buf.validate code is opt-in (validate=true)
+	if withValidate {
+		t, err = templates.ReadFile(path.Join("templates", "validate.kt.tmpl"))
+		if err != nil {
+			return err
+		}
+		modules = append(modules, kt.NewValidate(string(t), ".validate.kt"))
+	}
 
 	pgs.Init(pgs.DebugEnv("DEBUG"), pgs.ProtocInput(bytes.NewReader(input))).
 		RegisterModule(modules...).
