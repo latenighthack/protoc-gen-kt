@@ -1,0 +1,104 @@
+package {{ package . }}
+{{- if eq .InputPath.String "google/protobuf/timestamp.proto" }}
+
+// Helpers for google.protobuf.Timestamp, emitted by protoc-gen-kt only for google/protobuf/timestamp.proto.
+// A valid Timestamp has seconds in [-62135596800, 253402300799] (0001-01-01T00:00:00Z to 9999-12-31T23:59:59Z)
+// and nanos in [0, 999999999]; nanos always count forward from the seconds value, also for negative seconds.
+
+private const val TIMESTAMP_MIN_SECONDS = -62135596800L
+private const val TIMESTAMP_MAX_SECONDS = 253402300799L
+
+/** True when seconds and nanos are within the ranges documented in timestamp.proto. */
+fun Timestamp.isValid(): Boolean =
+    seconds in TIMESTAMP_MIN_SECONDS..TIMESTAMP_MAX_SECONDS && nanos in 0..999_999_999
+
+private fun Timestamp.requireValid(): Timestamp {
+    require(isValid()) { "Invalid google.protobuf.Timestamp: seconds=$seconds nanos=$nanos" }
+    return this
+}
+
+/** Milliseconds since the Unix epoch, rounded toward negative infinity. Throws IllegalArgumentException if invalid. */
+fun Timestamp.toEpochMillis(): Long {
+    requireValid()
+    return seconds * 1000L + nanos / 1_000_000
+}
+
+/** Builds a Timestamp from epoch milliseconds. Throws IllegalArgumentException if outside 0001..9999. */
+fun Timestamp.Companion.ofEpochMillis(millis: Long): Timestamp {
+    val seconds = millis.floorDiv(1000L)
+    val remainder = (millis - seconds * 1000L).toInt()
+    return Timestamp(seconds = seconds, nanos = remainder * 1_000_000).requireValid()
+}
+
+/**
+ * Builds a Timestamp, normalising [nanos] outside [0, 999999999] by carrying whole seconds
+ * (so nanos are always non-negative). Throws IllegalArgumentException if the result is out of range.
+ */
+fun Timestamp.Companion.ofEpochSeconds(seconds: Long, nanos: Long = 0L): Timestamp {
+    val carry = nanos.floorDiv(1_000_000_000L)
+    val total = seconds + carry
+    require(((seconds xor total) and (carry xor total)) >= 0L) { "Timestamp seconds overflow" }
+    return Timestamp(seconds = total, nanos = (nanos - carry * 1_000_000_000L).toInt()).requireValid()
+}
+
+/**
+ * kotlin.time.Instant is stable from Kotlin 2.3.0, so no opt-in is needed. Consumers on older
+ * Kotlin compilers cannot compile this file (Instant is experimental from 2.1.20 and absent before).
+ */
+fun Timestamp.toInstant(): kotlin.time.Instant = requireValid().let { kotlin.time.Instant.fromEpochSeconds(it.seconds, it.nanos.toLong()) }
+
+/** Throws IllegalArgumentException if the Instant is outside 0001-01-01..9999-12-31. */
+fun kotlin.time.Instant.toProtoTimestamp(): Timestamp =
+    Timestamp(seconds = epochSeconds, nanos = nanosecondsOfSecond).requireValid()
+{{- else if eq .InputPath.String "google/protobuf/duration.proto" }}
+
+import kotlin.time.DurationUnit
+import kotlin.time.toDuration
+
+// Helpers for google.protobuf.Duration, emitted by protoc-gen-kt only for google/protobuf/duration.proto.
+// A valid Duration has |seconds| <= 315576000000, |nanos| <= 999999999 and, when both are non-zero, the same sign.
+
+private const val DURATION_MAX_SECONDS = 315_576_000_000L
+
+/** True when seconds and nanos are within the ranges and sign rules documented in duration.proto. */
+fun Duration.isValid(): Boolean =
+    seconds in -DURATION_MAX_SECONDS..DURATION_MAX_SECONDS &&
+        nanos in -999_999_999..999_999_999 &&
+        !((seconds < 0L && nanos > 0) || (seconds > 0L && nanos < 0))
+
+private fun Duration.requireValid(): Duration {
+    require(isValid()) { "Invalid google.protobuf.Duration: seconds=$seconds nanos=$nanos" }
+    return this
+}
+
+/** Throws IllegalArgumentException if this Duration is invalid. Sub-millisecond precision is kept only for spans below ~146 years. */
+fun Duration.toKotlinDuration(): kotlin.time.Duration {
+    requireValid()
+    return seconds.toDuration(DurationUnit.SECONDS) + nanos.toLong().toDuration(DurationUnit.NANOSECONDS)
+}
+
+/** Throws IllegalArgumentException for infinite durations or those beyond +-315576000000 seconds. */
+fun kotlin.time.Duration.toProtoDuration(): Duration {
+    require(isFinite()) { "An infinite Duration cannot be represented as google.protobuf.Duration" }
+    return toComponents { seconds, nanoseconds -> Duration(seconds = seconds, nanos = nanoseconds) }.requireValid()
+}
+
+/** Builds a Duration from milliseconds. Throws IllegalArgumentException if out of range. */
+fun Duration.Companion.ofMillis(millis: Long): Duration =
+    Duration(seconds = millis / 1000L, nanos = (millis % 1000L).toInt() * 1_000_000).requireValid()
+
+/**
+ * Builds a Duration, normalising [nanos] outside +-999999999 by carrying whole seconds and
+ * giving seconds and nanos the same sign. Throws IllegalArgumentException if out of range.
+ */
+fun Duration.Companion.ofSeconds(seconds: Long, nanos: Long = 0L): Duration {
+    val carry = nanos / 1_000_000_000L
+    val total = seconds + carry
+    require(((seconds xor total) and (carry xor total)) >= 0L) { "Duration seconds overflow" }
+    var s = total
+    var n = (nanos % 1_000_000_000L).toInt()
+    if (s > 0L && n < 0) { s -= 1L; n += 1_000_000_000 }
+    else if (s < 0L && n > 0) { s += 1L; n -= 1_000_000_000 }
+    return Duration(seconds = s, nanos = n).requireValid()
+}
+{{- end }}

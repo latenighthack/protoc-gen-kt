@@ -68,6 +68,10 @@ func validateRequest(request *pluginpb.CodeGeneratorRequest) error {
 	return nil
 }
 
+func hasWellKnownHelpers(name string) bool {
+	return name == "google/protobuf/timestamp.proto" || name == "google/protobuf/duration.proto"
+}
+
 func run() error {
 	input, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -97,8 +101,8 @@ func run() error {
 			return err
 		}
 
-		// The service template will be specifically handled
-		if strings.HasPrefix(e.Name(), "service") || strings.HasPrefix(e.Name(), "server") {
+		// The service and wkt templates are specifically handled
+		if strings.HasPrefix(e.Name(), "service") || strings.HasPrefix(e.Name(), "server") || strings.HasPrefix(e.Name(), "wkt") {
 			continue
 		}
 
@@ -148,6 +152,24 @@ func run() error {
 			"."+strings.TrimSuffix("server.kt.tmpl", ".tmpl"),
 			func(f pgs.File) bool {
 				return len(f.Services()) > 0
+			},
+		),
+	)
+
+	// Well-known-type helpers: only for the two files that have helpers.
+
+	t, err = templates.ReadFile(path.Join("templates", "wkt.kt.tmpl"))
+	if err != nil {
+		return err
+	}
+
+	modules = append(
+		modules,
+		kt.New(
+			string(t),
+			"."+strings.TrimSuffix("wkt.kt.tmpl", ".tmpl"),
+			func(f pgs.File) bool {
+				return hasWellKnownHelpers(f.InputPath().String())
 			},
 		),
 	)
