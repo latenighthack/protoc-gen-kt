@@ -7,6 +7,7 @@ import {{ . }}.mergeFrom
 import com.latenighthack.ktbuf.ProtobufReader
 import com.latenighthack.ktbuf.ProtobufInputStream
 import com.latenighthack.ktbuf.ProtobufLimits
+import com.latenighthack.ktbuf.ProtobufDecodeOptions
 import com.latenighthack.ktbuf.bytes.MutableLinkedByteArray
 
 {{- define "message" -}}
@@ -21,6 +22,18 @@ inline fun {{ fullyQualifiedName . }}.Companion.parseFrom(bytes: ByteArray, limi
             {{ fullyQualifiedName . }}.readFrom(it)
         }
     }
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun {{ fullyQualifiedName . }}.Companion.parseFrom(bytes: ByteArray, options: ProtobufDecodeOptions): {{ fullyQualifiedName . }} = ProtobufInputStream(options)
+    .let { stream ->
+        stream.addBytes(bytes)
+        stream.read {
+            {{ fullyQualifiedName . }}.readFrom(it)
+        }
+    }
+
+@Suppress("NOTHING_TO_INLINE")
+inline fun {{ fullyQualifiedName . }}.Companion.decodeStrict(bytes: ByteArray): {{ fullyQualifiedName . }} = parseFrom(bytes, ProtobufDecodeOptions.Strict)
 
 fun {{ fullyQualifiedName . }}.Companion.readFrom(reader: ProtobufReader): {{ fullyQualifiedName . }} = mergeFrom(reader, null)
 
@@ -44,7 +57,7 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
             }
                 {{- else if .Type.IsEnum }}
             reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
-                {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
+                {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32()).also { if (it is {{ typeNonNull . }}.UNKNOWN_) reader.rejectUnknownEnum({{ .Descriptor.Number }}, it.value) }
             }
                 {{- else if isBytes . }}
             reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ lowerCamel .OneOf.Descriptor.Name }}.{{ name . }} = reader.readBytes() }
@@ -70,7 +83,7 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
                                 {{- if .Type.Element.IsEmbed }}
                                 value = entryReader.readField { {{ fullyQualifiedName .Type.Element.Embed }}.mergeFrom(it, value) }
                                 {{- else if .Type.Element.IsEnum }}
-                                value = {{ elTypeName .Type.Element }}.Companion.fromInt(entryReader.readInt32())
+                                value = {{ elTypeName .Type.Element }}.Companion.fromInt(entryReader.readInt32()).also { if (it is {{ elTypeName .Type.Element }}.UNKNOWN_) entryReader.rejectUnknownEnum(2, it.value) }
                                 {{- else }}
                                 value = entryReader.{{ readerMethod .Type.Element.ProtoType }}()
                                 {{- end }}
@@ -91,14 +104,14 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
                 if (reader.currentWireType == 2U) reader.readField { fieldReader ->
                     while (fieldReader.isByteAvailable()) {
                         {{ if .Type.Element.IsEnum }}
-                        _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32()))
+                        _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(fieldReader.readInt32()).also { if (it is {{ elementTypeNonNull . }}.UNKNOWN_) fieldReader.rejectUnknownEnum({{ .Descriptor.Number }}, it.value) })
                         {{ else }}
                         _pb{{ name . }}.add(fieldReader.{{ readerMethod .Type.ProtoType }}())
                         {{ end }}
                     }
                 } else {
                     {{ if .Type.Element.IsEnum }}
-                    _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32()))
+                    _pb{{ name . }}.add({{ elementTypeNonNull . }}.Companion.fromInt(reader.readInt32()).also { if (it is {{ elementTypeNonNull . }}.UNKNOWN_) reader.rejectUnknownEnum({{ .Descriptor.Number }}, it.value) })
                     {{ else }}
                     _pb{{ name . }}.add(reader.{{ readerMethod .Type.ProtoType }}())
                     {{ end }}
@@ -106,7 +119,7 @@ fun {{ fullyQualifiedName . }}.Companion.mergeFrom(reader: ProtobufReader, previ
                 {{ end }}
             }
             {{- else if .Type.IsEnum }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> {
-                {{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32())
+                {{ name . }} = {{ typeNonNull . }}.Companion.fromInt(reader.readInt32()).also { if (it is {{ typeNonNull . }}.UNKNOWN_) reader.rejectUnknownEnum({{ .Descriptor.Number }}, it.value) }
             }
             {{- else if isBytes . }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ name . }} = reader.readBytes() }
             {{- else }}reader.currentFieldNumber == {{ .Descriptor.Number }} && {{ acceptedWireTypes . }} -> { {{ name . }} = reader.{{ readerMethod .Type.ProtoType }}() }
