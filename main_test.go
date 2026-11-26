@@ -483,7 +483,7 @@ func TestUnicodeAndQuotedJavaPackageCompiles(t *testing.T) {
 	runKotlin(t, files, "import café.`$pkg`.`when`.*\nfun main() {check(Safe.fromByteArray(Safe(7).toByteArray()).id==7)}")
 }
 
-func TestDeterministicEncodingSortsMapsAndOrdersFieldsByNumber(t *testing.T) {
+func TestDeterministicEncodingSortsMapsAndOrdersFieldsLikeProtobufGo(t *testing.T) {
 	files, log, err := generate(t, map[string]string{"det.proto": testHeader + `message Inner { map<uint32,string> m=1; } message Det { string s=5; oneof pick { int32 x=3; Inner y=9; } int32 z=1; map<string,int32> sm=7; map<sint64,string> lm=8; map<uint64,string> um=10; map<bool,string> bm=11; Inner inner=4; }`})
 	if err != nil {
 		t.Fatal(log)
@@ -498,8 +498,9 @@ fun main() {
     val det = v.toDeterministicByteArray()
     check(det.contentEquals(v.toByteArray(ProtobufEncodeOptions.Deterministic)))
     check(Det.fromByteArray(det) == v && Det.fromByteArray(v.toByteArray()) == v)
-    // Field 1 (z) first, then oneof 3, inner 4 (with nested sorted map), s 5.
-    check(hex(det).startsWith("0802" + "1801" + "22"))
+    // protobuf-go order: plain fields by number (z 1, inner 4, s 5, ...), then the oneof (x 3) last.
+    check(hex(det).startsWith("0802" + "22"))
+    check(hex(det).endsWith("1801"))
     check(!det.contentEquals(v.toByteArray()))
     // Same logical value with different insertion order encodes identically only when deterministic.
     val w = v.copy(sm=linkedMapOf("a" to 3, "｡" to 2, "😀" to 1))
@@ -509,12 +510,12 @@ fun main() {
 }
 
 func TestWellKnownHelpersAreEmittedOnlyForTimestampAndDuration(t *testing.T) {
-	files, log, err := generate(t, map[string]string{
+	files, log, err := generateWith(t, map[string]string{
 		"google/protobuf/timestamp.proto": `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
 		"google/protobuf/duration.proto":  `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Duration { int64 seconds=1; int32 nanos=2; }`,
 		"google/protobuf/empty.proto":     `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Empty {}`,
 		"other/timestamp.proto":           `syntax="proto3"; package other; option java_package="other"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
-	})
+	}, "--kt_opt=wkt_helpers=true")
 	if err != nil {
 		t.Fatal(log)
 	}
@@ -536,4 +537,36 @@ func TestWellKnownHelpersAreEmittedOnlyForTimestampAndDuration(t *testing.T) {
 		t.Fatalf("duration helpers wrong:\n%s", files[want[0]])
 	}
 	compileKotlin(t, files)
+}
+
+func TestWellKnownHelpersRequireOptIn(t *testing.T) {
+	protos := map[string]string{
+		"google/protobuf/timestamp.proto": `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
+		"google/protobuf/duration.proto":  `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Duration { int64 seconds=1; int32 nanos=2; }`,
+	}
+	for _, opt := range []string{"", "--kt_opt=wkt_helpers=false", "--kt_opt=validate=true"} {
+		var extra []string
+		if opt != "" {
+			extra = append(extra, opt)
+		}
+		files, log, err := generateWith(t, protos, extra...)
+		if err != nil {
+			t.Fatal(log)
+		}
+		for name := range files {
+			if strings.HasSuffix(name, ".wkt.kt") {
+				t.Fatalf("%q emitted %s without wkt_helpers=true", opt, name)
+			}
+		}
+	}
+	files, log, err := generateWith(t, protos, "--kt_opt=validate=true,wkt_helpers=true")
+	if err != nil {
+		t.Fatal(log)
+	}
+	if _, ok := files["com/google/protobuf/timestamp.wkt.kt"]; !ok {
+		t.Fatal("combined options did not emit wkt helpers")
+	}
+	if _, log, err := generateWith(t, protos, "--kt_opt=wkt_helpers=maybe"); err == nil {
+		t.Fatalf("expected error for invalid wkt_helpers, got %s", log)
+	}
 }

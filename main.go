@@ -77,7 +77,7 @@ func hasWellKnownHelpers(name string) bool {
 
 // parseParameters reads the comma-separated k=v plugin parameter. Unknown keys are errors
 // so that a typo cannot silently disable validation.
-func parseParameters(raw string) (validate bool, err error) {
+func parseParameters(raw string) (validate, wktHelpers bool, err error) {
 	for _, part := range strings.Split(raw, ",") {
 		if part == "" {
 			continue
@@ -94,15 +94,24 @@ func parseParameters(raw string) (validate bool, err error) {
 			case "false":
 				validate = false
 			default:
-				return false, fmt.Errorf("invalid value %q for parameter validate (expected true or false)", value)
+				return false, false, fmt.Errorf("invalid value %q for parameter validate (expected true or false)", value)
+			}
+		case "wkt_helpers":
+			switch value {
+			case "true":
+				wktHelpers = true
+			case "false":
+				wktHelpers = false
+			default:
+				return false, false, fmt.Errorf("invalid value %q for parameter wkt_helpers (expected true or false)", value)
 			}
 		case "output_path":
 			// consumed by protoc-gen-star itself
 		default:
-			return false, fmt.Errorf("unknown parameter %q (supported: validate=true|false)", key)
+			return false, false, fmt.Errorf("unknown parameter %q (supported: validate=true|false, wkt_helpers=true|false)", key)
 		}
 	}
-	return validate, nil
+	return validate, wktHelpers, nil
 }
 
 func run() error {
@@ -114,7 +123,7 @@ func run() error {
 	if err := proto.Unmarshal(input, request); err != nil {
 		return err
 	}
-	withValidate, err := parseParameters(request.GetParameter())
+	withValidate, withWktHelpers, err := parseParameters(request.GetParameter())
 	if err != nil {
 		return err
 	}
@@ -193,7 +202,7 @@ func run() error {
 		),
 	)
 
-	// Well-known-type helpers: only for the two files that have helpers.
+	// Well-known-type helpers: opt-in (wkt_helpers=true), only for the two files that have helpers.
 
 	t, err = templates.ReadFile(path.Join("templates", "wkt.kt.tmpl"))
 	if err != nil {
@@ -206,7 +215,7 @@ func run() error {
 			string(t),
 			"."+strings.TrimSuffix("wkt.kt.tmpl", ".tmpl"),
 			func(f pgs.File) bool {
-				return hasWellKnownHelpers(f.InputPath().String())
+				return withWktHelpers && hasWellKnownHelpers(f.InputPath().String())
 			},
 		),
 	)

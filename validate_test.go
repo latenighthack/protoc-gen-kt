@@ -205,3 +205,45 @@ func keys(m map[string]string) []string {
 	}
 	return out
 }
+
+func TestValidateRecursesIntoMessagesFromOtherPackages(t *testing.T) {
+	files := map[string]string{
+		"google/protobuf/timestamp.proto": `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
+		"google/protobuf/duration.proto":  `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Duration { int64 seconds=1; int32 nanos=2; }`,
+		"dep.proto": `syntax = "proto3";
+package dep.pkg;
+import "buf/validate/validate.proto";
+option java_package = "dep.pkg";
+message Dep { string name = 1 [(buf.validate.field).string.min_len = 2]; }
+`,
+		"v.proto": validateHeader + `import "dep.proto";
+message M {
+  dep.pkg.Dep one = 1;
+  repeated dep.pkg.Dep many = 2;
+  map<string, dep.pkg.Dep> by = 3;
+  google.protobuf.Timestamp when = 4;
+}`,
+	}
+	out, output, err := generateWith(t, files, "--kt_opt=validate=true")
+	if err != nil {
+		t.Fatalf("generation failed: %v\n%s", err, output)
+	}
+	body := out["v/t/v.validate.kt"]
+	for _, want := range []string{"import dep.pkg.validateInto\n", "e.validateInto(out, ep)", "v.validateInto(out, p)"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("validate file missing %q\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "protobuf.validateInto") {
+		t.Errorf("well-known types must not be recursed into\n%s", body)
+	}
+	runKotlin(t, out, `import v.t.*
+import dep.pkg.*
+import com.latenighthack.ktbuf.validate.*
+fun main() {
+    val bad = M(one = Dep(name = "x"), many = listOf(Dep(name = "ok"), Dep(name = "y")), by = linkedMapOf("k" to Dep(name = "z")))
+    val v = bad.validate()
+    check(v.size == 3) { v.toString() }
+    check(M(one = Dep(name = "okay")).validate().isEmpty())
+}`)
+}

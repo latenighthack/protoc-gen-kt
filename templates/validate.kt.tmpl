@@ -1,7 +1,9 @@
 package {{ package . }}
 
 import com.latenighthack.ktbuf.validate.*
-
+{{ range validateImports . -}}
+import {{ . }}.validateInto
+{{ end }}
 {{ validatePrelude . }}
 {{- define "validateMessage" }}
 

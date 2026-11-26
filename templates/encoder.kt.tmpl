@@ -32,15 +32,16 @@ fun {{ fullyQualifiedName . }}.toDeterministicByteArray(): ByteArray = toByteArr
 fun {{ fullyQualifiedName . }}.writeTo(writer: ProtobufWriter) {
     {{- if needsFieldOrdering . }}
     if (writer.deterministic) {
-        {{- range orderedFields . }}
-        {{- if inOneOf . }}
-        when ({{ lowerCamel .OneOf.Descriptor.Name }}) {
-            {{- template "oneofCase" . }}
-            else -> {}
-        }
-        {{- else }}
+        {{- range orderedPlainFields . }}
         {{- template "plainField" . }}
         {{- end }}
+        {{- range .OneOfs }}
+        when ({{ lowerCamel .Descriptor.Name }}) {
+            {{- range .Fields }}
+{{- template "oneofCase" . }}
+            {{- end }}
+            else -> {}
+        }
         {{- end }}
         unknownFields?.let { writer.encodeRaw(it) }
         return

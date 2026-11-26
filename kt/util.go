@@ -248,20 +248,15 @@ func MapKeyOrder(t pgs.ProtoType) string {
 	}
 }
 
-// NeedsFieldOrdering reports whether the default writeTo order (oneof groups first, then the
-// remaining fields in declaration order) differs from ascending field-number order, in which case
-// deterministic encoding needs a separate, number-ordered body.
+// NeedsFieldOrdering reports whether the default writeTo order (oneof groups first in declaration
+// order, then the remaining fields in declaration order) differs from the order protobuf-go uses
+// for deterministic marshaling (order.LegacyFieldOrder): plain fields by ascending number, then
+// each oneof in declaration order. In that case deterministic encoding needs a separate body.
 func NeedsFieldOrdering(m pgs.Message) bool {
-	last := int32(0)
-	for _, o := range m.OneOfs() {
-		for _, f := range o.Fields() {
-			if n := f.Descriptor().GetNumber(); n > last {
-				last = n
-			} else {
-				return true
-			}
-		}
+	if len(m.OneOfs()) > 0 && len(m.NonOneOfFields()) > 0 {
+		return true
 	}
+	last := int32(0)
 	for _, f := range m.NonOneOfFields() {
 		if n := f.Descriptor().GetNumber(); n > last {
 			last = n
@@ -272,9 +267,10 @@ func NeedsFieldOrdering(m pgs.Message) bool {
 	return false
 }
 
-// OrderedFields returns every field of the message (oneof members included) by ascending number.
-func OrderedFields(m pgs.Message) []pgs.Field {
-	fields := append([]pgs.Field{}, m.Fields()...)
+// OrderedPlainFields returns the fields outside any oneof by ascending number. Oneofs follow them
+// in declaration order in the deterministic body.
+func OrderedPlainFields(m pgs.Message) []pgs.Field {
+	fields := append([]pgs.Field{}, m.NonOneOfFields()...)
 	sort.SliceStable(fields, func(i, j int) bool {
 		return fields[i].Descriptor().GetNumber() < fields[j].Descriptor().GetNumber()
 	})

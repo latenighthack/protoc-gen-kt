@@ -52,7 +52,7 @@ var (
 		"shouldPack":         ShouldPack,
 		"mapKeyOrder":        MapKeyOrder,
 		"needsFieldOrdering": NeedsFieldOrdering,
-		"orderedFields":      OrderedFields,
+		"orderedPlainFields": OrderedPlainFields,
 		"inOneOf":            IsOneOfMember,
 		"isPacked":           IsPacked,
 		"imports":            Imports,
@@ -60,6 +60,7 @@ var (
 		"packageImports":     PackageImports,
 		"default":            DefaultValue,
 		"validatePrelude":    ValidatePrelude,
+		"validateImports":    ValidateImports,
 		"validateBody":       ValidateBody,
 	}
 )

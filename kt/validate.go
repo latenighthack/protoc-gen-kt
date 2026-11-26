@@ -283,12 +283,41 @@ func (k kind) isUnsigned() bool {
 	return k.pt == pgs.UInt32T || k.pt == pgs.UInt64T || k.pt == pgs.Fixed32T || k.pt == pgs.Fixed64T
 }
 
-// recursable reports whether validateInto exists for this message (it is generated in this run).
+// recursable reports whether a call to the message's validateInto is emitted. It fails closed:
+// every message type recurses (including messages from other modules, which then must also be
+// generated with validate=true or the consumer fails to compile) except google.protobuf.* well-known
+// types, which carry no protovalidate rules.
 func (k kind) recursable() bool {
-	if k.msg == nil || !k.msg.BuildTarget() {
-		return false
+	return k.msg != nil && isRecursableMessage(k.msg)
+}
+
+func isRecursableMessage(m pgs.Message) bool {
+	return m.Package().ProtoName().String() != "google.protobuf"
+}
+
+// ValidateImports returns the packages whose validateInto extension functions the file's
+// validation code calls on embedded messages declared in other packages.
+func ValidateImports(f pgs.File) []string {
+	var imports []string
+	add := func(m pgs.Message) {
+		if !isRecursableMessage(m) {
+			return
+		}
+		if name := PackageName(m).String(); name != PackageName(f).String() {
+			imports = append(imports, name)
+		}
 	}
-	return k.msg.Package().ProtoName().String() != "google.protobuf"
+	for _, message := range f.AllMessages() {
+		for _, field := range message.Fields() {
+			ft := field.Type()
+			if ft.IsEmbed() {
+				add(ft.Embed())
+			} else if (ft.IsMap() || ft.IsRepeated()) && ft.Element().IsEmbed() {
+				add(ft.Element().Embed())
+			}
+		}
+	}
+	return unique(imports)
 }
 
 func (k kind) numLit(v protoreflect.Value) string {
