@@ -499,3 +499,33 @@ fun main() {
     check(!v.toByteArray().contentEquals(w.toByteArray()))
 }`)
 }
+
+func TestWellKnownHelpersAreEmittedOnlyForTimestampAndDuration(t *testing.T) {
+	files, log, err := generate(t, map[string]string{
+		"google/protobuf/timestamp.proto": `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
+		"google/protobuf/duration.proto":  `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Duration { int64 seconds=1; int32 nanos=2; }`,
+		"google/protobuf/empty.proto":     `syntax="proto3"; package google.protobuf; option java_package="com.google.protobuf"; message Empty {}`,
+		"other/timestamp.proto":           `syntax="proto3"; package other; option java_package="other"; message Timestamp { int64 seconds=1; int32 nanos=2; }`,
+	})
+	if err != nil {
+		t.Fatal(log)
+	}
+	var got []string
+	for name := range files {
+		if strings.HasSuffix(name, ".wkt.kt") {
+			got = append(got, name)
+		}
+	}
+	sort.Strings(got)
+	want := []string{"com/google/protobuf/duration.wkt.kt", "com/google/protobuf/timestamp.wkt.kt"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("wkt outputs = %v, want %v", got, want)
+	}
+	if !strings.Contains(files[want[1]], "fun Timestamp.toEpochMillis()") || strings.Contains(files[want[1]], "Duration.isValid") {
+		t.Fatalf("timestamp helpers wrong:\n%s", files[want[1]])
+	}
+	if !strings.Contains(files[want[0]], "fun kotlin.time.Duration.toProtoDuration()") || strings.Contains(files[want[0]], "toEpochMillis") {
+		t.Fatalf("duration helpers wrong:\n%s", files[want[0]])
+	}
+	compileKotlin(t, files)
+}
